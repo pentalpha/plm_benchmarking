@@ -1,0 +1,6 @@
+input_data/*.parquet
+input_data/*.obo
+input_data/*.tsv
+output_data/*.txt
+outputs/*.txt
+*.pyc
