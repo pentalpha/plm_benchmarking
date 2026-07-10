@@ -39,46 +39,26 @@ Best performing parameter combination:
 ============================================================
 INTERPRO+TAXID
 Fmax: 0.8674
-Parameters: {'max_depth': 11, 'min_data_in_leaf': 5, 'min_gain_to_split': 2.0, 
-'max_bin': 256, 'lr': 0.01, 'lambda_l2': 1, 'use_hess': True, 'gd_steps': 2, 
-'colsample': 0.4, 'subsample': 0.9, 'ntrees': 20000, 'es': 300}
 ============================================================"""
 
 
 def show_y_density(y):
     # Show density of cells with 1.0, 0.0 and NaN
     n_cells = y.shape[0] * y.shape[1]
-    n_1 = np.sum(y == 1.0)
-    n_0 = np.sum(y == 0.0)
-    n_nan = np.sum(np.isnan(y))
-    print("Density of 1.0:", n_1, "/", n_cells, "=", n_1 / n_cells)
-    print("Density of 0.0:", n_0, "/", n_cells, "=", n_0 / n_cells)
-    print("Density of NaN:", n_nan, "/", n_cells, "=", n_nan / n_cells)
+    # Find possible cells values in matrix
+    unique_values = np.unique(y)
 
-
-def make_n_combinations(param_options_dict, n):
-    import random
-
-    param_names = list(param_options_dict.keys())
-    combs = [{} for _ in range(n)]
-    for i, param in enumerate(param_names):
-        options = param_options_dict[param]
-        # check if the list contains lists
-        if any(isinstance(o, list) for o in options):
-            # list of lists like [[1, 2], [2, 3]]: choose one list randomly
-            random_n_vals = random.choices(options, k=n)
-        else:
-            # list of numbers or booleans
-            random_n_vals = random.choices(options, k=n)
-        for j in range(n):
-            combs[j][param] = random_n_vals[j]
-    return combs
+    print("Unique values in y:", unique_values)
+    for val in unique_values:
+        n_val = np.sum(y == val)
+        print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
 
 
 if __name__ == "__main__":
     url_ou_caminho_obo = "input_data/go-basic.obo"
     go_graph = obonet.read_obo(url_ou_caminho_obo)
 
+    # df = pl.read_parquet("input_data/xy_mf.ankh.parquet")
     df = pl.read_parquet("input_data/xy_mf.parquet")
     print(df)
     print(df.columns)
@@ -103,13 +83,34 @@ if __name__ == "__main__":
     # print(df)
     # print(df.columns)
 
-    X = np.array(df["emb"].to_list())
-    y = np.array(df["targets"].to_list())
-
     print("Original y density:")
     show_y_density(y)
 
-    print("Conditional y density:")
+    df_nan_as_zero = df.with_columns(
+        pl.col("targets").arr.eval(pl.element().fill_nan(0.0))
+    )
+    X_nan_as_zero = np.array(df_nan_as_zero["emb"].to_list())
+    y_nan_as_zero = np.array(df_nan_as_zero["targets"].to_list())
+
+    # transform x >= 0.9 into 1.0
+    y_nan_as_zero = np.where(y_nan_as_zero >= 0.9, 1.0, y_nan_as_zero)
+
+    print("Nan as zero density:")
+    show_y_density(y_nan_as_zero)
+    train_x, test_x, train_y, test_y = train_test_split(
+        X_nan_as_zero, y_nan_as_zero, test_size=0.2, random_state=42
+    )
+    fmax_val_orig_f, fmax_val_orig_strict, success_orig = eval_param_comb(
+        best_ankh_base, train_x, test_x, train_y, test_y, mask_nan=False
+    )
+
+    print("Fmax for original y:", fmax_val_orig_f)
+    print("Fmax for original y (strict):", fmax_val_orig_strict)
+
+    """print("Conditional y density:")
+    X = np.array(df["emb"].to_list())
+    y = np.array(df["targets"].to_list())
+    y = np.where(y >= 0.9, 1.0, y)
     y_condicional = apply_conditional_zeros(y, model_labels, go_graph)
     show_y_density(y_condicional)
 
@@ -120,8 +121,40 @@ if __name__ == "__main__":
     train_x, test_x, train_y, test_y = train_test_split(
         X, y_condicional, test_size=0.2, random_state=42
     )
+    fmax_val_cond_f, fmax_val_cond_strict, success_cond = eval_param_comb(
+        best_ankh_base, train_x, test_x, train_y, test_y
+    )
 
-    combinations_for_testing = make_n_combinations(hyperparameter_space, 32)
+    print("Fmax for conditional y:", fmax_val_cond_f)
+    print("Fmax for conditional y (strict):", fmax_val_cond_strict)
+    print("Difference:", fmax_val_cond_f - fmax_val_orig_f)
+    print("Strict Difference: ", fmax_val_cond_strict - fmax_val_orig_strict)"""
+
+    print("Conditional y + fuzzy:")
+    X = np.array(df["emb"].to_list())
+    y = np.array(df["targets"].to_list())
+    y_condicional = apply_conditional_zeros(
+        y, model_labels, go_graph, custom_inferred_zero=0.15
+    )
+    show_y_density(y_condicional)
+
+    print(X.shape)
+    print(y.shape)
+    print(y_condicional.shape)
+
+    train_x, test_x, train_y, test_y = train_test_split(
+        X, y_condicional, test_size=0.2, random_state=42
+    )
+    fmax_val_fuzzy_f, fmax_val_fuzzy_strict, success_fuzzy = eval_param_comb(
+        best_ankh_base, train_x, test_x, train_y, test_y
+    )
+
+    print("Fmax for conditional + fuzzy:", fmax_val_fuzzy_f)
+    print("Fmax for conditional + fuzzy (strict):", fmax_val_fuzzy_strict)
+    print("Difference:", fmax_val_fuzzy_f - fmax_val_orig_f)
+    print("Strict Difference: ", fmax_val_fuzzy_strict - fmax_val_orig_strict)
+
+    quit(0)
 
     tests = []
     for combination in combinations_for_testing:

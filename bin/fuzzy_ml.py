@@ -4,6 +4,7 @@ import cupy as cp
 import numpy as np
 from py_boost import Callback
 from py_boost.gpu.losses import BCELoss, BCEMetric
+import obonet
 
 
 class BCEWithNaNLoss(BCELoss):
@@ -83,8 +84,65 @@ class WarmStart(Callback):
         return
 
 
+def create_ontology_dictionaries(obo_path: str):
+    # children_dict: key GO ID, value set of all GO IDs that are direct children of the key GO ID (direct connection, not a path)
+    # parents_dict: key GO ID, value set of all GO IDs that are direct parents of the key GO ID (direct connection, not a path)
+    # In the obonet graph, the edges are directed from the child to the parent (child -> parent). So operations are inverted
+    go_graph = obonet.read_obo(obo_path)
+    parents_dict = {go_id: set(go_graph.successors(go_id)) for go_id in go_graph.nodes}
+    children_dict = {
+        go_id: set(go_graph.predecessors(go_id)) for go_id in go_graph.nodes
+    }
+
+    return parents_dict, children_dict
+
+
+def show_y_density(y):
+    # Show density of cells with 1.0, 0.0 and NaN
+    n_cells = y.shape[0] * y.shape[1]
+    # Find possible cells values in matrix
+    unique_values = np.unique(y)
+
+    print("Unique values in y:", unique_values)
+    totals = 0
+    for val in unique_values:
+        if np.isnan(val):
+            n_val = n_cells - totals
+            print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
+        else:
+            # Make mask where 1.0 -> has x = val and 0.0 -> x != val
+            mask = np.where(y == val, 1.0, 0.0)
+            n_val = np.sum(mask)
+            totals += n_val
+            print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
+
+
+def find_conditional_zeros(
+    true_labels: set, real_negatives: set, children_lists: dict[str, set]
+) -> set:
+    new_negatives = set()
+    parents = [x for x in true_labels if x in children_lists]
+    for l in parents:
+        conditional_zeros = children_lists[l] - true_labels - real_negatives
+        new_negatives.update(conditional_zeros)
+
+    return new_negatives
+
+
+def find_conditional_zeros_inverse(
+    real_negatives: set, true_labels: set, parent_lists: dict[str, set]
+) -> set:
+    new_conditional_negatives = set()
+    children = [x for x in true_labels if x in parent_lists]
+    for l in children:
+        conditional_zeros = parent_lists[l] - true_labels - real_negatives
+        new_conditional_negatives.update(conditional_zeros)
+
+    return new_conditional_negatives
+
+
 def apply_conditional_zeros(
-    Y: np.ndarray, terms: list, go_graph: nx.MultiDiGraph
+    Y: np.ndarray, terms: list, go_graph: nx.MultiDiGraph, custom_inferred_zero=None
 ) -> np.ndarray:
     """
     Aplica a estratégia de zeros condicionais na matriz de alvos (targets).
@@ -138,6 +196,9 @@ def apply_conditional_zeros(
     mask_to_zero = np.isnan(Y_updated) & (parent_true_counts > 0)
 
     # Aplicamos a fronteira de falsos
-    Y_updated[mask_to_zero] = 0.0
+    if custom_inferred_zero is None:
+        Y_updated[mask_to_zero] = 0.0
+    else:
+        Y_updated[mask_to_zero] = custom_inferred_zero
 
     return Y_updated

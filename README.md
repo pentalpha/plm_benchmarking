@@ -17,7 +17,6 @@ conda env create -n pyboost --file pyboost_cuda13.yaml
 ```sh
 conda activate pyboost
 ln -s <ABS_PATH_TO_PDDB_RELEASE_2> input_data
-python bin/select_targets.py
-python bin/prepare_xy.py
-python bin/test_mf.py
+python bin/sample_metaparameters.py
+source test_fuzzy.sh
 ```

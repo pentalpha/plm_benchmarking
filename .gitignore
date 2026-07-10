@@ -2,5 +2,13 @@ input_data/*.parquet
 input_data/*.obo
 input_data/*.tsv
 output_data/*.txt
+outputs/*.tsv
 outputs/*.txt
+outputs/*.log
+outputs/*.parquet
+outputs/emb_tests
+outputs/old
+outputs/*.csv
+outputs/metaparameters/
+
 *.pyc
