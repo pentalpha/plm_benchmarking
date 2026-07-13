@@ -10,5 +10,6 @@ outputs/emb_tests
 outputs/old
 outputs/*.csv
 outputs/metaparameters/
-
+outputs/.xlsx
 *.pyc
+.*#

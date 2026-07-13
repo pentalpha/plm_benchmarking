@@ -158,6 +158,8 @@ def train_and_save_preds(train_x, test_x, y_name, y_data, more_negatives):
 
                 # Desachata os índices para o formato da matriz original e substitui
                 train_y.ravel()[chosen_nan_indices] = 0.0
+        else:
+            return None, None, False
 
     preds_result_basename = preds_dir + "/" + y_name
     y_pred_path = preds_result_basename + ".npy"

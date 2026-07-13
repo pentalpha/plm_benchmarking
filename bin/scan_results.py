@@ -16,7 +16,7 @@ from custom_statistics import (
     nan_macro_average_precision,
     mcc_bycol_weighted_masked,
 )
-from fuzzy_ml import create_ontology_dictionaries_full
+from fuzzy_ml import create_ontology_dictionaries_full, show_y_density
 from train_eval import run_statistics
 
 output_path = sys.argv[1]
@@ -48,11 +48,11 @@ eval_metrics = {
 "CAFA AUPRC"
 """
 metric_weights_for_sorting = {
-    "OWA Weighted Fmax (micro)": 2,
+    "OWA Weighted Fmax (micro)": 1,
     "OWA Weighted MCC (micro)": 1,
     "OWA Weighted AUPRC": 1,
-    "CAFA Weighted Fmax": 2.5,
-    "CAFA AUPRC": 1.5,
+    "CAFA Weighted Fmax": 1,
+    "CAFA AUPRC": 1,
 }
 
 url_ou_caminho_obo = "input_data/go-basic.obo"
@@ -180,14 +180,15 @@ def calc_metrics(stats_path: str, model_results: dict, ont: str):
             verbose=False,
         )
         # print(model_name, ont, params_set_name)
+        """
+        methodology:
+            target ontology:
+                [result of each param set]
+        """
         if not model_name in model_results:
             model_results[model_name] = {}
-        if not params_set_name in model_results[model_name]:
-            model_results[model_name][params_set_name] = {
-                "MF": None,
-                "BP": None,
-                "CC": None,
-            }
+        if not ont in model_results[model_name]:
+            model_results[model_name][ont] = []
 
         y_stats_default = run_statistics(y_pred, test_y_classic, test_y_owa, weights)
 
@@ -199,7 +200,11 @@ def calc_metrics(stats_path: str, model_results: dict, ont: str):
             ): val
             for metric_raw_name, val in y_stats_default.items()
         }
+        stats_pretty["Model Name"] = model_name
+        stats_pretty["Parameters Set ID"] = params_set_name
         stats_pretty["Sort Score"] = get_sorting_score(stats_pretty)
+        stats_pretty["Fuzzy Y Test Path"] = processed_inputs_dir + "/test_y_fuzzy.npy"
+        stats_pretty["Fuzzy Y Train Path"] = processed_inputs_dir + "/train_y_fuzzy.npy"
 
         print(
             model_name,
@@ -211,80 +216,125 @@ def calc_metrics(stats_path: str, model_results: dict, ont: str):
             stats_pretty["OWA Weighted AUPRC"],
         )
         # print("CAFA Fmax W", cafa_fmax)
-        model_results[model_name][params_set_name][ont] = stats_pretty
+        model_results[model_name][ont].append(stats_pretty)
+
+
+def save_sampling_and_annot_counts(test_y_paths, train_y_paths, output_path: str):
+    fuzzy_value_to_annot_type = {
+        0.0: "Experimental and Phylogenetic Negative",
+        0.025: "Derivated Negative",
+        0.15: "Conditional Negative",
+        np.nan: "Unlabeled",
+        0.9: "Phylogenetic Positive",
+        1.0: "Experimental Positive",
+    }
+    counts = {
+        "MF": {"Train": {}, "Test": {}},
+        "BP": {"Train": {}, "Test": {}},
+        "CC": {"Train": {}, "Test": {}},
+    }
+    train_paths = [(p, True) for p in train_y_paths]
+    test_paths = [(p, False) for p in test_y_paths]
+    paths = train_paths + test_paths
+    for path, is_train in paths:
+        if is_train:
+            split = "Train"
+        else:
+            split = "Test"
+        if "mf-" in path:
+            ont = "MF"
+        elif "cc-" in path:
+            ont = "CC"
+        elif "bp-" in path:
+            ont = "BP"
+        else:
+            raise ValueError(f"Unknown ontology for path: {path}")
+        counting_dict = counts[ont][split]
+
+        y_targets = np.load(path)
+        # show_y_density(y_targets)
+        counting_dict["Proteins"] = y_targets.shape[0]
+        for val, annot_type in fuzzy_value_to_annot_type.items():
+            if np.isnan(val):
+                is_val_mask = np.isnan(y_targets)
+            else:
+                is_val_mask = y_targets == val
+            counting_dict[annot_type] = np.sum(is_val_mask)
+        # print(counting_dict)
+        # if split == "Train":
+        #    quit(1)
+
+    rows = []
+    for ont, split_counts in counts.items():
+        new_row = {"Ontology": ont}
+        for split_name, split_counts_dict in split_counts.items():
+            new_row.update(
+                {f"{split_name} - {k}": v for k, v in split_counts_dict.items()}
+            )
+        rows.append(new_row)
+    df = pl.DataFrame(rows)
+    df.write_csv(output_path, separator="\t")
 
 
 def save_model_results_csv(model_results, output_path):
-    short_col_list = [
+    short_col_list1 = [
         "Model Name",
+        "Ontology",
+        "Sort Score",
+        "OWA Weighted Fmax (micro)",
+        "OWA Weighted MCC (micro)",
+        "OWA Weighted AUPRC",
+        "CAFA Weighted Fmax",
+        "CAFA AUPRC",
         "Parameters Set ID",
-        "Mean Sort Score",
-        "MF - Sort Score",
-        "BP - Sort Score",
-        "CC - Sort Score",
-        "MF - CAFA Weighted Fmax",
-        "MF - CAFA Weighted Fmax (Conditional)",
-        "MF - Fmax (lowest 20%)",
-        "MF - AUPRC",
-        "BP - CAFA Weighted Fmax",
-        "BP - CAFA Weighted Fmax (Conditional)",
-        "BP - Fmax (lowest 20%)",
-        "BP - AUPRC",
-        "CC - CAFA Weighted Fmax",
-        "CC - CAFA Weighted Fmax (Conditional)",
-        "CC - Fmax (lowest 20%)",
-        "CC - AUPRC",
         "Params",
     ]
 
-    for model_name, param_combs in model_results.items():
-        for param_comb_key, ont_stats in param_combs.items():
-            has_ont = [ont for ont in ont_stats if ont_stats[ont] is not None]
-            # print(model_name, "with", param_comb_key, "has", has_ont)
-
+    short_col_list_explained = [
+        "Model Name",
+        "Ontology",
+        "Sort Score",
+        "OWA Fmax",
+        "OWA MCC",
+        "OWA AUPRC",
+        "CWA Fmax",
+        "CWA AUPRC",
+        "Parameters Set ID",
+        "Params",
+    ]
     model_best_params = []
 
-    for model_name, param_combs in model_results.items():
-        combs_and_results = []
-        for param_comb_uniqkey, ont_stats in param_combs.items():
-            new_item = {
-                "Model Name": model_name,
-                "Parameters Set ID": param_comb_uniqkey,
-            }
-            # Ontologies for which we have results
-            tested_onts = []
-            for ont in ["MF", "BP", "CC"]:
-                if ont_stats[ont] is not None:
-                    tested_onts.append(ont)
-            key_scores = [ont_stats[ont]["Sort Score"] for ont in tested_onts]
+    for model_name, results_by_ont in model_results.items():
+        for ont, results_list in results_by_ont.items():
+            results_list.sort(key=lambda x: x["Sort Score"], reverse=True)
+            best_comb = results_list[0]
+            best_comb["Ontology"] = ont
+            comb_index = best_comb["Parameters Set ID"]
+            comb_path = f"outputs/metaparameters/comb_{comb_index}.json"
+            best_comb["Params"] = json.dumps(json.load(open(comb_path)))
+            model_best_params.append(best_comb)
 
-            mean_key_score = sum(key_scores) / 3
-            new_item["Mean Sort Score"] = mean_key_score
-            for ont in tested_onts:
-                for metric_name, val in ont_stats[ont].items():
-                    new_item[ont + " - " + metric_name] = val
-
-            combs_and_results.append(new_item)
-
-        combs_and_results.sort(key=lambda x: x["Mean Sort Score"], reverse=True)
-        best_comb = combs_and_results[0]
-        comb_index = best_comb["Parameters Set ID"]
-        comb_path = f"outputs/metaparameters/comb_{comb_index}.json"
-        # best_comb["Params"] = json.dumps(tuples_str_to_dict(best_comb["Params"]))
-        best_comb["Params"] = json.dumps(json.load(open(comb_path)))
-
-        model_best_params.append(best_comb)
-
-    model_best_params.sort(key=lambda x: x["Mean Sort Score"], reverse=True)
+    model_best_params.sort(key=lambda x: x["Sort Score"], reverse=True)
 
     # for l in model_best_params:
     #    print(l)
     df = pl.DataFrame(model_best_params)
     df.write_csv(output_path, separator="\t")
 
-    short_col_list = [c for c in short_col_list if c in df.columns]
+    short_col_list = [c for c in short_col_list1 if c in df.columns]
+
+    test_y_paths = df["Fuzzy Y Test Path"].unique()
+    train_y_paths = df["Fuzzy Y Train Path"].unique()
+    save_sampling_and_annot_counts(
+        test_y_paths=test_y_paths,
+        train_y_paths=train_y_paths,
+        output_path=output_path.replace(".tsv", ".counts.tsv"),
+    )
 
     df_short = df.select(short_col_list)
+    # replace col names:
+    mapping_dict = {c1: c2 for c1, c2 in zip(short_col_list1, short_col_list_explained)}
+    df_short = df_short.rename(mapping_dict)
     df_short.write_csv(output_path.replace(".tsv", ".short.tsv"), separator="\t")
 
 
@@ -303,7 +353,7 @@ for dir_path in progress_bar:
     calc_metrics(stats_path, model_results, ont)
     new_results_calculated += 1
 
-    if new_results_calculated % 10 == 0:
+    if new_results_calculated % 12 == 0:
         save_model_results_csv(model_results, output_path)
 
 save_model_results_csv(model_results, output_path)
