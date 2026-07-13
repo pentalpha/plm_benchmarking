@@ -97,6 +97,61 @@ def create_ontology_dictionaries(obo_path: str):
     return parents_dict, children_dict
 
 
+def create_ontology_dictionaries_full0(obo_path: str):
+    # children_dict: key GO ID, value set of all GO IDs that are direct children of the key GO ID (direct connection, not a path)
+    # parents_dict: key GO ID, value set of all GO IDs that are direct parents of the key GO ID (direct connection, not a path)
+    # In the obonet graph, the edges are directed from the child to the parent (child -> parent). So operations are inverted
+    go_graph = obonet.read_obo(obo_path)
+    parents_dict = {
+        go_id: set(nx.descendants(go_graph, go_id)) for go_id in go_graph.nodes
+    }
+    children_dict = {
+        go_id: set(nx.ancestors(go_graph, go_id)) for go_id in go_graph.nodes
+    }
+
+    # create_depth_first_order
+    go_graph_inverted = go_graph.reverse()
+    go_sortings = {}
+    for ont_name, go_id in [
+        ("MF", "GO:0003674"),
+        ("CC", "GO:0005575"),
+        ("BP", "GO:0008150"),
+    ]:
+        order = list(nx.dfs_preorder_nodes(go_graph_inverted, source=go_id))
+        inv_order = list(nx.dfs_postorder_nodes(go_graph, source=go_id))
+
+        go_sortings[ont_name] = {"preorder": order, "postorder": inv_order}
+
+    return parents_dict, children_dict, go_sortings
+
+
+def create_ontology_dictionaries_full(obo_path: str):
+    go_graph = obonet.read_obo(obo_path)
+
+    # descendants pega TODOS os ancestrais (pula nós que ficaram de fora dos targets)
+    parents_dict = {
+        go_id: set(nx.descendants(go_graph, go_id)) for go_id in go_graph.nodes
+    }
+    # ancestors pega TODOS os descendentes (pula nós que ficaram de fora dos targets)
+    children_dict = {
+        go_id: set(nx.ancestors(go_graph, go_id)) for go_id in go_graph.nodes
+    }
+
+    go_graph_inverted = go_graph.reverse()
+    go_sortings = {}
+    for ont_name, go_id in [
+        ("MF", "GO:0003674"),
+        ("CC", "GO:0005575"),
+        ("BP", "GO:0008150"),
+    ]:
+        order = list(nx.dfs_preorder_nodes(go_graph_inverted, source=go_id))
+        inv_order = list(nx.dfs_postorder_nodes(go_graph, source=go_id))
+
+        go_sortings[ont_name] = {"preorder": order, "postorder": inv_order}
+
+    return parents_dict, children_dict, go_sortings
+
+
 def show_y_density(y):
     # Show density of cells with 1.0, 0.0 and NaN
     n_cells = y.shape[0] * y.shape[1]

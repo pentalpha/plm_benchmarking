@@ -179,36 +179,6 @@ if __name__ == "__main__":
         stderr_file = os.path.join(current_test_dir, "stderr.txt")
         required_stats = ["Model Results", "success"]
 
-        previously_run = os.path.exists(param_comb_save_path)
-        successful_previuosly = False
-        if previously_run:
-            if os.path.exists(statistics_path):
-                stats = json.load(open(statistics_path))
-                successful_previuosly = all(key in stats for key in required_stats)
-                if successful_previuosly:
-                    successful_previuosly &= stats["success"]
-                    successful_previuosly &= not os.path.exists(system_error_flag)
-            else:
-                successful_previuosly = False
-
-        if previously_run and remake_tests and not successful_previuosly:
-            run_this = True
-        elif successful_previuosly:
-            stats = json.load(open(statistics_path))
-            successful_tests.append((param_comb, stats))
-            next_test += 1
-            run_this = False
-            print(
-                f"{current_test_dir}: previously_run={previously_run}, successful_previuosly={successful_previuosly}, run_this={run_this}"
-            )
-            continue
-        else:
-            run_this = True
-
-        print(
-            f"{current_test_dir}: previously_run={previously_run}, successful_previuosly={successful_previuosly}, run_this={run_this}"
-        )
-
         with open(param_comb_save_path, "w") as f:
             json.dump(param_comb, f, indent=4)
 
@@ -239,9 +209,8 @@ if __name__ == "__main__":
             with open(system_error_flag, "w") as f:
                 f.write(str(e))
             print(f"Error in param combination {param_comb}: {e}")
+            stats = {"success": False, "Error": str(e)}
             success = False
-            fmax_fuzzy = None
-            fmax_cafa = None
 
         if success:
             stats_dict = json.load(open(statistics_path))
@@ -252,31 +221,3 @@ if __name__ == "__main__":
         else:
             failed_tests.append(param_comb)
         next_test += 1
-
-    successful_tests.sort(
-        key=lambda x: (
-            round(
-                x[1]["fmax_col_mean_cafa_composite"],
-                4,
-            ),
-            round(
-                x[1]["fmax_col_mean_cafa"] + x[1]["fmax_col_mean_cafa_more_negatives"],
-                3,
-            ),
-            round(
-                x[1]["fmax_col_mean_nan"] + x[1]["fmax_col_mean_nan_more_negatives"], 3
-            ),
-        ),
-        reverse=True,
-    )
-
-    top_params, top_test = successful_tests[0]
-    top_test["successful_tests"] = len(successful_tests)
-    top_test["failed_tests"] = len(failed_tests)
-    top_test["fmax_counts_cafa"] = count_f1_qualities(top_test["fmax_all_values_cafa"])
-    top_test["params"] = top_params
-
-    # print(json.dumps(top_test, indent=4))
-    with open(os.path.join(TESTS_DIR, "results.json"), "w") as f:
-        json.dump(top_test, f, indent=4)
-    print("Results saved to ", os.path.join(TESTS_DIR, "results.json"))

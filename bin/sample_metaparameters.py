@@ -9,7 +9,7 @@ hyperparameter_space = {
     "max_depth": [3, 4, 6, 8, 10, 11, 12],
     "min_data_in_leaf": [1, 2, 3, 5, 10, 20, 35, 50, 100],
     "min_gain_to_split": [0.0, 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0],
-    "max_bin": [64, 128, 192, 256, 384, 512],
+    "max_bin": [64, 128, 192, 255],
     # Regularização e Otimização
     "lr": [
         0.1,
@@ -36,7 +36,7 @@ hyperparameter_space2 = {
     "max_depth": [3, 4, 6, 8],
     "min_data_in_leaf": [1, 2, 3, 5, 10, 20, 35, 50, 100],
     "min_gain_to_split": [0.0, 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0],
-    "max_bin": [64, 128, 192, 256],
+    "max_bin": [64, 128, 192, 255],
     # Regularização e Otimização
     "lr": [
         0.1,

@@ -3,13 +3,29 @@ import json
 import os
 from glob import glob
 import numpy as np
+from polars.catalog.unity import models
 from tqdm import tqdm
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score
 from scipy.stats import rankdata
 
 from training import train_param_comb
-from custom_statistics import macro_fmax, nan_macro_average_precision
+from custom_statistics import (
+    macro_fmax,
+    nan_macro_average_precision,
+    faster_fmax_weighted,
+    faster_fmax_weighted_nan,
+    get_ia_vector,
+    faster_fmax_weighted_nan,
+    calc_normalized_y_pred,
+    nan_macro_average_precision,
+    mcc_bycol_weighted_masked,
+)
+
+go_ia_path = "input_data/go_ia.tsv"
+go_ia_dict = {
+    l.strip().split("\t")[0]: float(l.strip().split("\t")[1]) for l in open(go_ia_path)
+}
 
 
 def train_logistic_stacker(y_train, p_train_1, p_train_2, p_test_1, p_test_2):
@@ -117,9 +133,31 @@ def train_and_save_preds(train_x, test_x, y_name, y_data, more_negatives):
 
     if more_negatives:
         np.random.seed(42)  # Mantém benchmarks reprodutíveis
-        random_mask = np.random.rand(*train_y.shape) < 0.10
-        nan_mask = np.isnan(train_y)
-        train_y[nan_mask & random_mask] = 0.0
+        target_min_zeros = 0.12
+        # x != NaN and x < 0.5 = negative evi = zero
+        zeros_mask = (~np.isnan(train_y)) & (train_y < 0.5)
+
+        n_cells_total = train_y.size
+        n_zeros_min = int(n_cells_total * target_min_zeros)
+        n_zeros_current = np.sum(zeros_mask)
+
+        if n_zeros_current < n_zeros_min:
+            n_zeros_to_add = n_zeros_min - n_zeros_current
+
+            # Encontra as coordenadas (flattened) de todos os NaNs disponíveis
+            nan_indices = np.where(np.isnan(train_y).flatten())[0]
+
+            # Garante que não vamos tentar amostrar mais NaNs do que o disponível
+            n_zeros_to_add = min(n_zeros_to_add, len(nan_indices))
+
+            if n_zeros_to_add > 0:
+                # 2. Seleção exata e aleatória sem repetição (garante o número preciso)
+                chosen_nan_indices = np.random.choice(
+                    nan_indices, size=n_zeros_to_add, replace=False
+                )
+
+                # Desachata os índices para o formato da matriz original e substitui
+                train_y.ravel()[chosen_nan_indices] = 0.0
 
     preds_result_basename = preds_dir + "/" + y_name
     y_pred_path = preds_result_basename + ".npy"
@@ -141,45 +179,72 @@ def train_and_save_preds(train_x, test_x, y_name, y_data, more_negatives):
         y_pred, y_pred_train, success = train_param_comb(
             param_comb, train_x, test_x, train_y, test_y
         )
-        np.save(y_pred_path, y_pred)
-        np.save(y_pred_train_path, y_pred_train)
+        if success:
+            np.save(y_pred_path, y_pred)
+            np.save(y_pred_train_path, y_pred_train)
 
     return y_pred, y_pred_train, success
 
 
-def run_statistics(y_pred, y_eval_cafa, y_eval_conditional):
+def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights):
     n_gos = y_eval_cafa.shape[1]
     n_bottom_gos = round(n_gos * 0.2)
     # find n_bottom_gos columns in y_true with smallest sums
-    bottom_go_indices = np.argsort(y_eval_cafa.sum(axis=0))[:n_bottom_gos]
-    bottom_go_indices = bottom_go_indices.tolist()
+    # bottom_go_indices = np.argsort(y_eval_cafa.sum(axis=0))[:n_bottom_gos]
+    # bottom_go_indices = bottom_go_indices.tolist()
 
     fmax_mean_cafa, fmax_all_cafa = macro_fmax(y_eval_cafa, y_pred)
-    bottom_fmaxes = np.array([fmax_all_cafa[i] for i in bottom_go_indices])
+    bottom_fmaxes = sorted(list(fmax_all_cafa))[:n_bottom_gos]
     fmax_bottom20percent_cafa = np.mean(bottom_fmaxes)
 
-    fmax_mean_conditional, fmax_all_conditional = macro_fmax(y_eval_conditional, y_pred)
-    bottom_fmaxes = np.array([fmax_all_conditional[i] for i in bottom_go_indices])
-    fmax_bottom20percent_conditional = np.mean(bottom_fmaxes)
+    """fmax_mean_conditional, fmax_all_conditional = macro_fmax(y_eval_owa, y_pred)
+    bottom_fmaxes = sorted(list(fmax_all_conditional))[:n_bottom_gos]
+    fmax_bottom20percent_conditional = np.mean(bottom_fmaxes)"""
 
+    # Find macro AUPRC with scikit-learn
+    auprc_score_cafa = average_precision_score(y_eval_cafa, y_pred, average="macro")
+    auprc_score_owa = nan_macro_average_precision(y_eval_owa, y_pred, weights=weights)
+    """
     print(f"Fmax mean (CAFA): {fmax_mean_cafa}")
     print(f"Fmax bottom 20 percent (CAFA): {fmax_bottom20percent_cafa}")
     print(f"Fmax mean (Conditional): {fmax_mean_conditional}")
     print(f"Fmax bottom 20 percent (Conditional): {fmax_bottom20percent_conditional}")
+    print(f"AUPRC (Macro) (CAFA): {auprc_score_cafa}")   
+    print(f"AUPRC (Macro) (Conditional): {auprc_score_conditional}")"""
 
-    # Find macro AUPRC with scikit-learn
-    auprc_score_cafa = average_precision_score(y_eval_cafa, y_pred, average="macro")
-    auprc_score_conditional = nan_macro_average_precision(y_eval_conditional, y_pred)
-    print(f"AUPRC (Macro) (CAFA): {auprc_score_cafa}")
-    print(f"AUPRC (Macro) (Conditional): {auprc_score_conditional}")
+    cafa_fmax, other_metrics = faster_fmax_weighted(
+        y_pred, y_eval_cafa, weights, additional_result="full"
+    )
+    fmax_list = other_metrics["fmax_by_col"]
+    fmax_list_bottom_20 = sorted(fmax_list)[:n_bottom_gos]
+    fmax_bottom20percent_cafa = np.mean(fmax_list_bottom_20)
+
+    cafa_fmax_owa_macro, other_metrics_owa_macro = faster_fmax_weighted_nan(
+        y_pred, y_eval_owa, weights, additional_result="full"
+    )
+    fmax_list2 = other_metrics_owa_macro["fmax_by_col"]
+    fmax_list2_bottom_20 = sorted(fmax_list2)[:n_bottom_gos]
+    fmax_bottom20percent_owa = np.mean(fmax_list2_bottom_20)
+
+    cafa_fmax_owa_micro, other_metrics_owa_micro = faster_fmax_weighted_nan(
+        y_pred, y_eval_owa, weights, additional_result="full", average="micro"
+    )
+
+    mcc_dict = mcc_bycol_weighted_masked(y_pred, y_eval_owa, weights)
+    macro_mcc = mcc_dict["macro_mcc"]
+    weighted_macro_mcc = mcc_dict["weighted_macro_mcc"]
 
     y_stats = {
-        "fmax_mean_cafa": fmax_mean_cafa,
-        "fmax_bottom20percent_cafa": fmax_bottom20percent_cafa,
-        "auprc_score_cafa": auprc_score_cafa,
-        "fmax_mean_conditional": fmax_mean_conditional,
-        "fmax_bottom20percent_conditional": fmax_bottom20percent_conditional,
-        "auprc_score_conditional": auprc_score_conditional,
+        "OWA Weighted Fmax": cafa_fmax_owa_macro,
+        "OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
+        "OWA Weighted MCC": macro_mcc,
+        "OWA Weighted MCC (micro)": weighted_macro_mcc,
+        "OWA Weighted AUPRC": auprc_score_owa,
+        "OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
+        "CAFA Weighted Fmax": cafa_fmax,
+        "CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
+        "CAFA Fmax Macro": fmax_mean_cafa,
+        "CAFA AUPRC": auprc_score_cafa,
     }
 
     return y_stats
@@ -193,6 +258,14 @@ if __name__ == "__main__":
     test_dir = os.path.dirname(statistics_path)
     preds_dir = os.path.join(test_dir, "predictions")
     os.makedirs(preds_dir, exist_ok=True)
+
+    targets_tests_path = os.path.dirname(
+        os.path.dirname(os.path.dirname(processed_inputs_dir))
+    )
+    targets_name = os.path.basename(targets_tests_path)
+    targets_parquet = f"outputs/{targets_name}.parquet"
+    label_names_path = targets_parquet + ".targets.txt"
+    labels = [l.strip() for l in open(label_names_path)]
 
     param_comb = json.load(open(param_comb_path))
     train_x = np.load(os.path.join(processed_inputs_dir, "train_x.npy"))
@@ -222,7 +295,11 @@ if __name__ == "__main__":
         y_data["is_classic"] = is_classic
 
     y_eval_cafa = y_by_name["classic"]["test"]
-    y_eval_conditional = y_by_name["conditional_negatives"]["test"]
+    y_eval_owa = y_by_name["open_world_assumption"]["test"]
+    y_by_name = {k: v for k, v in y_by_name.items() if k != "open_world_assumption"}
+
+    assert all([go in go_ia_dict for go in labels])
+    weights = get_ia_vector(labels, go_ia_dict)
 
     models_trained = []
 
@@ -237,21 +314,22 @@ if __name__ == "__main__":
         y_pred, y_pred_train, success = train_and_save_preds(
             train_x, test_x, y_name, y_data, False
         )
-        stats = run_statistics(y_pred, y_eval_cafa, y_eval_conditional)
+        if success:
+            stats = run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights)
 
-        models_trained.append(
-            {
-                "is_classic": is_classic,
-                "y_name": y_name,
-                "y_pred": y_pred,
-                "y_pred_train": y_pred_train,
-                "success": success,
-                "stats": stats,
-            }
-        )
+            models_trained.append(
+                {
+                    "is_classic": is_classic,
+                    "y_name": y_name,
+                    "y_pred": y_pred,
+                    "y_pred_train": y_pred_train,
+                    "success": success,
+                    "stats": stats,
+                }
+            )
 
-        if not is_classic:
-            more_negatives_by_name[y_name + "-more_negatives"] = y_data
+            if not is_classic:
+                more_negatives_by_name[y_name + "-more_negatives"] = y_data
 
         targets_progress_bar.update(1)
 
@@ -266,61 +344,84 @@ if __name__ == "__main__":
         y_pred_more_negatives, y_pred_more_negatives_train, success_neg = (
             train_and_save_preds(train_x, test_x, y_name, y_data, True)
         )
-        stats = run_statistics(y_pred_more_negatives, y_eval_cafa, y_eval_conditional)
+        if success_neg:
+            stats = run_statistics(
+                y_pred_more_negatives, y_eval_cafa, y_eval_owa, weights
+            )
 
-        models_trained.append(
-            {
-                "is_classic": False,
-                "y_name": y_name,
-                "y_pred": y_pred_more_negatives,
-                "y_pred_train": y_pred_more_negatives_train,
-                "success": success_neg,
-                "stats": stats,
-            }
+            models_trained.append(
+                {
+                    "is_classic": False,
+                    "y_name": y_name,
+                    "y_pred": y_pred_more_negatives,
+                    "y_pred_train": y_pred_more_negatives_train,
+                    "success": success_neg,
+                    "stats": stats,
+                }
+            )
+
+    if len(models_trained) > 0:
+
+        classic_model = [m for m in models_trained if m["is_classic"]][0]
+
+        blend_models = []
+
+        for m in models_trained:
+            if m["is_classic"]:
+                continue
+            other_y_pred = m["y_pred"]
+            blend_name = "classic+" + m["y_name"]
+            print("Trying blend", blend_name)
+
+            preds_result_basename = preds_dir + "/" + blend_name
+            y_pred_path = preds_result_basename + ".npy"
+
+            composite_preds = None
+            if os.path.exists(y_pred_path):
+                try:
+                    composite_preds = np.load(y_pred_path)
+                    print("Loaded composite predictions from", y_pred_path)
+                except Exception as e:
+                    print(e)
+
+            if composite_preds is None:
+                print("Composite predictions not found, computing...")
+                composite_preds = classic_model["y_pred"] * 0.5 + other_y_pred * 0.5
+                np.save(y_pred_path, composite_preds)
+
+            stats = run_statistics(composite_preds, y_eval_cafa, y_eval_owa, weights)
+
+            blend_models.append(
+                {
+                    "is_classic": False,
+                    "y_name": blend_name,
+                    "y_pred": composite_preds,
+                    "y_pred_train": None,
+                    "success": True,
+                    "stats": stats,
+                }
+            )
+
+        all_models = models_trained + blend_models
+
+        final_stats = {"Model Results": [], "Parameters": param_comb}
+
+        for m in all_models:
+            final_stats["Model Results"].append(
+                {"name": m["y_name"], "stats": m["stats"]}
+            )
+
+        final_stats["Model Results"].sort(
+            key=lambda x: (
+                x["stats"]["CAFA Fmax Macro"] + x["stats"]["OWA Weighted Fmax"]
+            )
         )
 
-    classic_model = [m for m in models_trained if m["is_classic"]][0]
+        final_stats["success"] = True
 
-    # Find model for optimal blend with classic model
-    best_blend_stats = None
-    best_blend_score = 0.0
-    best_blend_model = None
-    for m in models_trained:
-        other_y_pred = m["y_pred"]
-        blend_name = "classic+" + m["y_name"]
-        print("Trying blend", blend_name)
-        composite_preds = classic_model["y_pred"] * 0.5 + other_y_pred * 0.5
-        stats = run_statistics(composite_preds, y_eval_cafa, y_eval_conditional)
-        mean_score = (stats["fmax_mean_cafa"] + stats["fmax_mean_conditional"]) / 2
-        if mean_score > best_blend_score:
-            best_blend_score = mean_score
-            best_blend_stats = stats
-            best_blend_model = blend_name
-
-    print(f"Best blend: {best_blend_model} with score {best_blend_score}")
-    # print(best_blend_stats)
-    models_trained.append(
-        {
-            "is_classic": False,
-            "y_name": best_blend_model,
-            "y_pred": None,
-            "y_pred_train": None,
-            "success": True,
-            "stats": best_blend_stats,
-        }
-    )
-
-    final_stats = {"Model Results": [], "Parameters": param_comb}
-
-    for m in models_trained:
-        final_stats["Model Results"].append({"name": m["y_name"], "stats": m["stats"]})
-
-    final_stats["Model Results"].sort(
-        key=lambda x: (
-            x["stats"]["fmax_mean_cafa"] + x["stats"]["fmax_mean_conditional"]
-        )
-    )
-
-    final_stats["success"] = True
-
-    json.dump(final_stats, open(statistics_path, "w"), indent=4)
+        json.dump(final_stats, open(statistics_path, "w"), indent=4)
+    else:
+        print("No models trained.")
+        final_stats = {"Model Results": [], "Parameters": param_comb}
+        final_stats["success"] = False
+        json.dump(final_stats, open(statistics_path, "w"), indent=4)
