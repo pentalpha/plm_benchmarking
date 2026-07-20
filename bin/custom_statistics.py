@@ -734,3 +734,86 @@ def mcc_bycol_weighted_masked(
         "weighted_macro_mcc": weighted_macro_mcc,
         "mcc_by_col": max_mcc_per_col.tolist(),
     }
+
+
+metric_weights_for_sorting = {
+    "OWA Weighted Fmax (micro)": 1,
+    "OWA Weighted MCC (micro)": 1,
+    "OWA Weighted AUPRC": 1,
+    "CAFA Weighted Fmax": 1,
+    "CAFA AUPRC": 1,
+}
+
+
+def get_sorting_score(results: dict) -> float:
+    total_score = 0
+    for metric_name, metric_value in results.items():
+        if metric_name not in metric_weights_for_sorting:
+            continue
+        total_score += metric_value * metric_weights_for_sorting[metric_name]
+    total_score = total_score / sum(metric_weights_for_sorting.values())
+    return total_score
+
+
+def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2):
+    n_gos = y_eval_cafa.shape[1]
+    n_bottom_gos = round(n_gos * bottom_gos_perc)
+    # find n_bottom_gos columns in y_true with smallest sums
+    # bottom_go_indices = np.argsort(y_eval_cafa.sum(axis=0))[:n_bottom_gos]
+    # bottom_go_indices = bottom_go_indices.tolist()
+
+    fmax_mean_cafa, fmax_all_cafa = macro_fmax(y_eval_cafa, y_pred)
+    bottom_fmaxes = sorted(list(fmax_all_cafa))[:n_bottom_gos]
+    fmax_bottom20percent_cafa = np.mean(bottom_fmaxes)
+
+    """fmax_mean_conditional, fmax_all_conditional = macro_fmax(y_eval_owa, y_pred)
+    bottom_fmaxes = sorted(list(fmax_all_conditional))[:n_bottom_gos]
+    fmax_bottom20percent_conditional = np.mean(bottom_fmaxes)"""
+
+    # Find macro AUPRC with scikit-learn
+    auprc_score_cafa = average_precision_score(y_eval_cafa, y_pred, average="macro")
+    auprc_score_owa = nan_macro_average_precision(y_eval_owa, y_pred, weights=weights)
+    """
+    print(f"Fmax mean (CAFA): {fmax_mean_cafa}")
+    print(f"Fmax bottom 20 percent (CAFA): {fmax_bottom20percent_cafa}")
+    print(f"Fmax mean (Conditional): {fmax_mean_conditional}")
+    print(f"Fmax bottom 20 percent (Conditional): {fmax_bottom20percent_conditional}")
+    print(f"AUPRC (Macro) (CAFA): {auprc_score_cafa}")   
+    print(f"AUPRC (Macro) (Conditional): {auprc_score_conditional}")"""
+
+    cafa_fmax, other_metrics = faster_fmax_weighted(
+        y_pred, y_eval_cafa, weights, additional_result="full"
+    )
+    fmax_list = other_metrics["fmax_by_col"]
+    fmax_list_bottom_20 = sorted(fmax_list)[:n_bottom_gos]
+    fmax_bottom20percent_cafa = np.mean(fmax_list_bottom_20)
+
+    cafa_fmax_owa_macro, other_metrics_owa_macro = faster_fmax_weighted_nan(
+        y_pred, y_eval_owa, weights, additional_result="full"
+    )
+    fmax_list2 = other_metrics_owa_macro["fmax_by_col"]
+    fmax_list2_bottom_20 = sorted(fmax_list2)[:n_bottom_gos]
+    fmax_bottom20percent_owa = np.mean(fmax_list2_bottom_20)
+
+    cafa_fmax_owa_micro, other_metrics_owa_micro = faster_fmax_weighted_nan(
+        y_pred, y_eval_owa, weights, additional_result="full", average="micro"
+    )
+
+    mcc_dict = mcc_bycol_weighted_masked(y_pred, y_eval_owa, weights)
+    macro_mcc = mcc_dict["macro_mcc"]
+    weighted_macro_mcc = mcc_dict["weighted_macro_mcc"]
+
+    y_stats = {
+        "OWA Weighted Fmax": cafa_fmax_owa_macro,
+        "OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
+        "OWA Weighted MCC": macro_mcc,
+        "OWA Weighted MCC (micro)": weighted_macro_mcc,
+        "OWA Weighted AUPRC": auprc_score_owa,
+        "OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
+        "CAFA Weighted Fmax": cafa_fmax,
+        "CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
+        "CAFA Fmax Macro": fmax_mean_cafa,
+        "CAFA AUPRC": auprc_score_cafa,
+    }
+
+    return y_stats

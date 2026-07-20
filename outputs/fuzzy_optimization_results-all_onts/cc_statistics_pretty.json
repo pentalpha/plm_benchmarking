@@ -1,0 +1,850 @@
+{
+    "Best OWA": {
+        "OWA Weighted Fmax (micro)": 0.8842435187357246,
+        "OWA Weighted MCC (micro)": 0.5215362958949933,
+        "OWA Weighted AUPRC": 0.8206331585917751,
+        "CAFA Weighted Fmax": 0.5971579450774602,
+        "CAFA AUPRC": 0.2625848426692203,
+        "OWA Sort Score": 0.7421376577408311,
+        "CWA Sort Score": 0.4298713938733403,
+        "Sort Score": 0.6172311521938347,
+        "Evidence Representation Scheme": {
+            "Phylogenetic True": 0.96,
+            "Conditional False": 0.25,
+            "Derivate False": 0.12,
+            "Random Falses": true,
+            "Random Falses Min Perc": 0.35,
+            "Random False Val": 0.24
+        }
+    },
+    "Best CWA": {
+        "OWA Weighted Fmax (micro)": 0.8578500391548142,
+        "OWA Weighted MCC (micro)": 0.43975441089138834,
+        "OWA Weighted AUPRC": 0.6905670137436076,
+        "CAFA Weighted Fmax": 0.6098743234171414,
+        "CAFA AUPRC": 0.26656624424340514,
+        "OWA Sort Score": 0.66272382126327,
+        "CWA Sort Score": 0.4382202838302733,
+        "Sort Score": 0.5729224062900713,
+        "Evidence Representation Scheme": {
+            "Phylogenetic True": 0.87,
+            "Conditional False": 0.08,
+            "Derivate False": 0.04,
+            "Random Falses": true,
+            "Random Falses Min Perc": 0.27,
+            "Random False Val": 0.04
+        }
+    },
+    "Best Sort": {
+        "OWA Weighted Fmax (micro)": 0.8842435187357246,
+        "OWA Weighted MCC (micro)": 0.5215362958949933,
+        "OWA Weighted AUPRC": 0.8206331585917751,
+        "CAFA Weighted Fmax": 0.5971579450774602,
+        "CAFA AUPRC": 0.2625848426692203,
+        "OWA Sort Score": 0.7421376577408311,
+        "CWA Sort Score": 0.4298713938733403,
+        "Sort Score": 0.6172311521938347,
+        "Evidence Representation Scheme": {
+            "Phylogenetic True": 0.96,
+            "Conditional False": 0.25,
+            "Derivate False": 0.12,
+            "Random Falses": true,
+            "Random Falses Min Perc": 0.35,
+            "Random False Val": 0.24
+        }
+    },
+    "All results": [
+        {
+            "OWA Weighted Fmax (micro)": 0.8842435187357246,
+            "OWA Weighted MCC (micro)": 0.5215362958949933,
+            "OWA Weighted AUPRC": 0.8206331585917751,
+            "CAFA Weighted Fmax": 0.5971579450774602,
+            "CAFA AUPRC": 0.2625848426692203,
+            "OWA Sort Score": 0.7421376577408311,
+            "CWA Sort Score": 0.4298713938733403,
+            "Sort Score": 0.6172311521938347,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.96,
+                "Conditional False": 0.25,
+                "Derivate False": 0.12,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.35,
+                "Random False Val": 0.24
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8869083151025191,
+            "OWA Weighted MCC (micro)": 0.4912257540576316,
+            "OWA Weighted AUPRC": 0.7550969809303184,
+            "CAFA Weighted Fmax": 0.5955290995915512,
+            "CAFA AUPRC": 0.25538981193106153,
+            "OWA Sort Score": 0.711077016696823,
+            "CWA Sort Score": 0.4254594557613064,
+            "Sort Score": 0.5968299923226164,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.82,
+                "Conditional False": 0.36,
+                "Derivate False": 0.28,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.32,
+                "Random False Val": 0.35
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.9021539457730635,
+            "OWA Weighted MCC (micro)": 0.4974001951372145,
+            "OWA Weighted AUPRC": 0.7710484483198634,
+            "CAFA Weighted Fmax": 0.5601424736449271,
+            "CAFA AUPRC": 0.24070541616128757,
+            "OWA Sort Score": 0.7235341964100471,
+            "CWA Sort Score": 0.40042394490310734,
+            "Sort Score": 0.5942900958072712,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.76,
+                "Conditional False": 0.36,
+                "Derivate False": 0.1,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.33,
+                "Random False Val": 0.3
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8956853411077527,
+            "OWA Weighted MCC (micro)": 0.4826628810080674,
+            "OWA Weighted AUPRC": 0.7475400659035719,
+            "CAFA Weighted Fmax": 0.5788660439854844,
+            "CAFA AUPRC": 0.2624557281047809,
+            "OWA Sort Score": 0.7086294293397973,
+            "CWA Sort Score": 0.42066088604513263,
+            "Sort Score": 0.5934420120219315,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.97,
+                "Conditional False": 0.31,
+                "Derivate False": 0.23,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.26,
+                "Random False Val": 0.33
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8910145011530256,
+            "OWA Weighted MCC (micro)": 0.4830629593696615,
+            "OWA Weighted AUPRC": 0.7660406274026089,
+            "CAFA Weighted Fmax": 0.5715060523302947,
+            "CAFA AUPRC": 0.24984249528147234,
+            "OWA Sort Score": 0.7133726959750987,
+            "CWA Sort Score": 0.4106742738058835,
+            "Sort Score": 0.5922933271074127,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.89,
+                "Conditional False": 0.26,
+                "Derivate False": 0.08,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.2,
+                "Random False Val": 0.16
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8929334303903488,
+            "OWA Weighted MCC (micro)": 0.4771158890957171,
+            "OWA Weighted AUPRC": 0.7467879935178882,
+            "CAFA Weighted Fmax": 0.5837439009768168,
+            "CAFA AUPRC": 0.24909859152617453,
+            "OWA Sort Score": 0.7056124376679848,
+            "CWA Sort Score": 0.4164212462514957,
+            "Sort Score": 0.589935961101389,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.87,
+                "Conditional False": 0.4,
+                "Derivate False": 0.26,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.28,
+                "Random False Val": 0.39
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8975542272359353,
+            "OWA Weighted MCC (micro)": 0.47977216450309357,
+            "OWA Weighted AUPRC": 0.7414567120403266,
+            "CAFA Weighted Fmax": 0.5784128992759794,
+            "CAFA AUPRC": 0.2497346985763183,
+            "OWA Sort Score": 0.7062610345931185,
+            "CWA Sort Score": 0.4140737989261488,
+            "Sort Score": 0.5893861403263305,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.97,
+                "Conditional False": 0.19,
+                "Derivate False": 0.08,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.17,
+                "Random False Val": 0.13
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8965113128150357,
+            "OWA Weighted MCC (micro)": 0.4916862569820557,
+            "OWA Weighted AUPRC": 0.7584923906464601,
+            "CAFA Weighted Fmax": 0.5383718497685641,
+            "CAFA AUPRC": 0.23539837497988295,
+            "OWA Sort Score": 0.7155633201478505,
+            "CWA Sort Score": 0.3868851123742235,
+            "Sort Score": 0.5840920370383997,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.95,
+                "Conditional False": 0.3,
+                "Derivate False": 0.03,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.15,
+                "Random False Val": 0.16
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8754906542261066,
+            "OWA Weighted MCC (micro)": 0.4836553033832104,
+            "OWA Weighted AUPRC": 0.7356806383848504,
+            "CAFA Weighted Fmax": 0.5604089038891078,
+            "CAFA AUPRC": 0.25297809724540793,
+            "OWA Sort Score": 0.6982755319980557,
+            "CWA Sort Score": 0.40669350056725784,
+            "Sort Score": 0.5816427194257365,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.93,
+                "Conditional False": 0.31,
+                "Derivate False": 0.0,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.26,
+                "Random False Val": 0.22
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8780542202623987,
+            "OWA Weighted MCC (micro)": 0.4774918347522557,
+            "OWA Weighted AUPRC": 0.7592806001144086,
+            "CAFA Weighted Fmax": 0.5584516335610642,
+            "CAFA AUPRC": 0.23160559168379494,
+            "OWA Sort Score": 0.7049422183763543,
+            "CWA Sort Score": 0.39502861262242955,
+            "Sort Score": 0.5809767760747844,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.87,
+                "Conditional False": 0.11,
+                "Derivate False": 0.05,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.22,
+                "Random False Val": 0.2
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.863398143244321,
+            "OWA Weighted MCC (micro)": 0.4613381191328885,
+            "OWA Weighted AUPRC": 0.7160289622666444,
+            "CAFA Weighted Fmax": 0.5903733725205678,
+            "CAFA AUPRC": 0.2729295338241632,
+            "OWA Sort Score": 0.6802550748812846,
+            "CWA Sort Score": 0.4316514531723655,
+            "Sort Score": 0.5808136261977169,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 1.0,
+                "Conditional False": 0.33,
+                "Derivate False": 0.16,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.33,
+                "Random False Val": 0.2
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8783940967160537,
+            "OWA Weighted MCC (micro)": 0.49362856411308753,
+            "OWA Weighted AUPRC": 0.7486884181759632,
+            "CAFA Weighted Fmax": 0.5309442135349539,
+            "CAFA AUPRC": 0.23526043227284832,
+            "OWA Sort Score": 0.7069036930017015,
+            "CWA Sort Score": 0.3831023229039011,
+            "Sort Score": 0.5773831449625815,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.88,
+                "Conditional False": 0.37,
+                "Derivate False": 0.0,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.34,
+                "Random False Val": 0.44
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8803710972259163,
+            "OWA Weighted MCC (micro)": 0.4905001139581595,
+            "OWA Weighted AUPRC": 0.7494876504654348,
+            "CAFA Weighted Fmax": 0.5468545301099718,
+            "CAFA AUPRC": 0.21899572058958525,
+            "OWA Sort Score": 0.7067862872165035,
+            "CWA Sort Score": 0.3829251253497785,
+            "Sort Score": 0.5772418224698135,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.88,
+                "Conditional False": 0.25,
+                "Derivate False": 0.01,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.17,
+                "Random False Val": 0.3
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8828289957949365,
+            "OWA Weighted MCC (micro)": 0.4804588270995093,
+            "OWA Weighted AUPRC": 0.7482614983984143,
+            "CAFA Weighted Fmax": 0.5475591415131138,
+            "CAFA AUPRC": 0.2265688475355262,
+            "OWA Sort Score": 0.7038497737642867,
+            "CWA Sort Score": 0.38706399452432,
+            "Sort Score": 0.5771354620683,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.92,
+                "Conditional False": 0.17,
+                "Derivate False": 0.08,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.17,
+                "Random False Val": 0.31
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8896503345731153,
+            "OWA Weighted MCC (micro)": 0.4699806145923791,
+            "OWA Weighted AUPRC": 0.7410078400613365,
+            "CAFA Weighted Fmax": 0.5525780081661578,
+            "CAFA AUPRC": 0.22463111179289363,
+            "OWA Sort Score": 0.700212929742277,
+            "CWA Sort Score": 0.3886045599795257,
+            "Sort Score": 0.5755695818371764,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.89,
+                "Conditional False": 0.2,
+                "Derivate False": 0.14,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.16,
+                "Random False Val": 0.27
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8997873465734232,
+            "OWA Weighted MCC (micro)": 0.4895819723926056,
+            "OWA Weighted AUPRC": 0.7621018221244827,
+            "CAFA Weighted Fmax": 0.520241964682764,
+            "CAFA AUPRC": 0.20437433528271295,
+            "OWA Sort Score": 0.7171570470301706,
+            "CWA Sort Score": 0.36230814998273847,
+            "Sort Score": 0.5752174882111977,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.79,
+                "Conditional False": 0.3,
+                "Derivate False": 0.03,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.15,
+                "Random False Val": 0.22
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8767225318012912,
+            "OWA Weighted MCC (micro)": 0.4555355835089487,
+            "OWA Weighted AUPRC": 0.7102761152927405,
+            "CAFA Weighted Fmax": 0.5846396382978146,
+            "CAFA AUPRC": 0.24678069879515854,
+            "OWA Sort Score": 0.6808447435343269,
+            "CWA Sort Score": 0.41571016854648657,
+            "Sort Score": 0.5747909135391908,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.85,
+                "Conditional False": 0.38,
+                "Derivate False": 0.35,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.24,
+                "Random False Val": 0.43
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8716713771191887,
+            "OWA Weighted MCC (micro)": 0.44073717827240855,
+            "OWA Weighted AUPRC": 0.6871891989827679,
+            "CAFA Weighted Fmax": 0.6085747997191557,
+            "CAFA AUPRC": 0.26191738239996215,
+            "OWA Sort Score": 0.666532584791455,
+            "CWA Sort Score": 0.4352460910595589,
+            "Sort Score": 0.5740179872986967,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.96,
+                "Conditional False": 0.37,
+                "Derivate False": 0.32,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.29,
+                "Random False Val": 0.34
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8764743137920312,
+            "OWA Weighted MCC (micro)": 0.48283490277732594,
+            "OWA Weighted AUPRC": 0.73215087536153,
+            "CAFA Weighted Fmax": 0.54426636268,
+            "CAFA AUPRC": 0.2320750814150734,
+            "OWA Sort Score": 0.6971533639769624,
+            "CWA Sort Score": 0.38817072204753666,
+            "Sort Score": 0.5735603072051922,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.82,
+                "Conditional False": 0.21,
+                "Derivate False": 0.0,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.31,
+                "Random False Val": 0.27
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8578500391548142,
+            "OWA Weighted MCC (micro)": 0.43975441089138834,
+            "OWA Weighted AUPRC": 0.6905670137436076,
+            "CAFA Weighted Fmax": 0.6098743234171414,
+            "CAFA AUPRC": 0.26656624424340514,
+            "OWA Sort Score": 0.66272382126327,
+            "CWA Sort Score": 0.4382202838302733,
+            "Sort Score": 0.5729224062900713,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.87,
+                "Conditional False": 0.08,
+                "Derivate False": 0.04,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.27,
+                "Random False Val": 0.04
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8904784920065334,
+            "OWA Weighted MCC (micro)": 0.5066120278498703,
+            "OWA Weighted AUPRC": 0.7698976176004568,
+            "CAFA Weighted Fmax": 0.4995590404238015,
+            "CAFA AUPRC": 0.18930390473710093,
+            "OWA Sort Score": 0.7223293791522868,
+            "CWA Sort Score": 0.3444314725804512,
+            "Sort Score": 0.5711702165235526,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.84,
+                "Conditional False": 0.14,
+                "Derivate False": 0.02,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.15,
+                "Random False Val": 0.44
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8685632963404051,
+            "OWA Weighted MCC (micro)": 0.46877008625780675,
+            "OWA Weighted AUPRC": 0.7399125517241282,
+            "CAFA Weighted Fmax": 0.5464544521337333,
+            "CAFA AUPRC": 0.22668990998585067,
+            "OWA Sort Score": 0.69241531144078,
+            "CWA Sort Score": 0.386572181059792,
+            "Sort Score": 0.5700780592883847,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.79,
+                "Conditional False": 0.18,
+                "Derivate False": 0.13,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.26,
+                "Random False Val": 0.35
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.874714120693827,
+            "OWA Weighted MCC (micro)": 0.48772783280688703,
+            "OWA Weighted AUPRC": 0.7486081298983545,
+            "CAFA Weighted Fmax": 0.5232952833318216,
+            "CAFA AUPRC": 0.2108327304863728,
+            "OWA Sort Score": 0.7036833611330229,
+            "CWA Sort Score": 0.36706400690909724,
+            "Sort Score": 0.5690356194434526,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.77,
+                "Conditional False": 0.39,
+                "Derivate False": 0.01,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.21,
+                "Random False Val": 0.35
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8635875183741134,
+            "OWA Weighted MCC (micro)": 0.4570597581959944,
+            "OWA Weighted AUPRC": 0.7317431983369155,
+            "CAFA Weighted Fmax": 0.5577666128017285,
+            "CAFA AUPRC": 0.23473882985925335,
+            "OWA Sort Score": 0.6841301583023411,
+            "CWA Sort Score": 0.3962527213304909,
+            "Sort Score": 0.5689791835136011,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.87,
+                "Conditional False": 0.29,
+                "Derivate False": 0.18,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.3,
+                "Random False Val": 0.44
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8758887128922566,
+            "OWA Weighted MCC (micro)": 0.47378913330115113,
+            "OWA Weighted AUPRC": 0.7295109324640563,
+            "CAFA Weighted Fmax": 0.5459151445189092,
+            "CAFA AUPRC": 0.21579318622437993,
+            "OWA Sort Score": 0.6930629262191547,
+            "CWA Sort Score": 0.38085416537164457,
+            "Sort Score": 0.5681794218801507,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.79,
+                "Conditional False": 0.28,
+                "Derivate False": 0.1,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.24,
+                "Random False Val": 0.44
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8667192105274484,
+            "OWA Weighted MCC (micro)": 0.478517153359716,
+            "OWA Weighted AUPRC": 0.7358675467727248,
+            "CAFA Weighted Fmax": 0.5297607409450986,
+            "CAFA AUPRC": 0.21907690400679763,
+            "OWA Sort Score": 0.6937013035532965,
+            "CWA Sort Score": 0.37441882247594815,
+            "Sort Score": 0.565988311122357,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.85,
+                "Conditional False": 0.13,
+                "Derivate False": 0.0,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.28,
+                "Random False Val": 0.39
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8656736423558847,
+            "OWA Weighted MCC (micro)": 0.4679092222052864,
+            "OWA Weighted AUPRC": 0.7280803728206958,
+            "CAFA Weighted Fmax": 0.5259169117412739,
+            "CAFA AUPRC": 0.23970867133484972,
+            "OWA Sort Score": 0.6872210791272889,
+            "CWA Sort Score": 0.3828127915380618,
+            "Sort Score": 0.5654577640915981,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.92,
+                "Conditional False": 0.43,
+                "Derivate False": 0.01,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.2,
+                "Random False Val": 0.05
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8623644076336971,
+            "OWA Weighted MCC (micro)": 0.4440820450266306,
+            "OWA Weighted AUPRC": 0.7118448223522533,
+            "CAFA Weighted Fmax": 0.5668958402491391,
+            "CAFA AUPRC": 0.23209094987541684,
+            "OWA Sort Score": 0.6727637583375271,
+            "CWA Sort Score": 0.399493395062278,
+            "Sort Score": 0.5634556130274275,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.81,
+                "Conditional False": 0.24,
+                "Derivate False": 0.22,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.21,
+                "Random False Val": 0.32
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8860469332623824,
+            "OWA Weighted MCC (micro)": 0.4685021222236648,
+            "OWA Weighted AUPRC": 0.7166662384608603,
+            "CAFA Weighted Fmax": 0.5342897148397173,
+            "CAFA AUPRC": 0.20665890160684905,
+            "OWA Sort Score": 0.6904050979823024,
+            "CWA Sort Score": 0.3704743082232832,
+            "Sort Score": 0.5624327820786947,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.81,
+                "Conditional False": 0.39,
+                "Derivate False": 0.21,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.14,
+                "Random False Val": 0.12
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8543916742211698,
+            "OWA Weighted MCC (micro)": 0.46805274219270027,
+            "OWA Weighted AUPRC": 0.7332614876901945,
+            "CAFA Weighted Fmax": 0.534862255075036,
+            "CAFA AUPRC": 0.20621949195325875,
+            "OWA Sort Score": 0.6852353013680216,
+            "CWA Sort Score": 0.3705408735141474,
+            "Sort Score": 0.5593575302264719,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.84,
+                "Conditional False": 0.07,
+                "Derivate False": 0.04,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.18,
+                "Random False Val": 0.31
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8389603132978448,
+            "OWA Weighted MCC (micro)": 0.44556998553629046,
+            "OWA Weighted AUPRC": 0.6767075556981652,
+            "CAFA Weighted Fmax": 0.5839862714830705,
+            "CAFA AUPRC": 0.24972696332251795,
+            "OWA Sort Score": 0.6537459515107669,
+            "CWA Sort Score": 0.4168566174027942,
+            "Sort Score": 0.5589902178675779,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.76,
+                "Conditional False": 0.23,
+                "Derivate False": 0.07,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.31,
+                "Random False Val": 0.07
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8564721333556738,
+            "OWA Weighted MCC (micro)": 0.43077237786977235,
+            "OWA Weighted AUPRC": 0.6534974947702112,
+            "CAFA Weighted Fmax": 0.5930147255538691,
+            "CAFA AUPRC": 0.26026915857493405,
+            "OWA Sort Score": 0.6469140019985525,
+            "CWA Sort Score": 0.4266419420644016,
+            "Sort Score": 0.5588051780248922,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.86,
+                "Conditional False": 0.11,
+                "Derivate False": 0.08,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.23,
+                "Random False Val": 0.06
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8453568616414852,
+            "OWA Weighted MCC (micro)": 0.4622362398779272,
+            "OWA Weighted AUPRC": 0.7248738939067516,
+            "CAFA Weighted Fmax": 0.5334376398393412,
+            "CAFA AUPRC": 0.22672776325427316,
+            "OWA Sort Score": 0.677488998475388,
+            "CWA Sort Score": 0.3800827015468072,
+            "Sort Score": 0.5585264797039556,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.93,
+                "Conditional False": 0.07,
+                "Derivate False": 0.06,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.19,
+                "Random False Val": 0.36
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8412768046867798,
+            "OWA Weighted MCC (micro)": 0.45268032933582136,
+            "OWA Weighted AUPRC": 0.6796073094576145,
+            "CAFA Weighted Fmax": 0.5699825977511566,
+            "CAFA AUPRC": 0.24850230222243203,
+            "OWA Sort Score": 0.6578548144934052,
+            "CWA Sort Score": 0.40924244998679427,
+            "Sort Score": 0.5584098686907609,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.91,
+                "Conditional False": 0.23,
+                "Derivate False": 0.04,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.22,
+                "Random False Val": 0.02
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.866148793352608,
+            "OWA Weighted MCC (micro)": 0.4721802575744195,
+            "OWA Weighted AUPRC": 0.7321041940183425,
+            "CAFA Weighted Fmax": 0.5216933879302849,
+            "CAFA AUPRC": 0.19538761996090617,
+            "OWA Sort Score": 0.69014441498179,
+            "CWA Sort Score": 0.3585405039455955,
+            "Sort Score": 0.5575028505673122,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.81,
+                "Conditional False": 0.18,
+                "Derivate False": 0.14,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.16,
+                "Random False Val": 0.42
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8887604819664956,
+            "OWA Weighted MCC (micro)": 0.46788498708024395,
+            "OWA Weighted AUPRC": 0.7400853007356474,
+            "CAFA Weighted Fmax": 0.49136171840769544,
+            "CAFA AUPRC": 0.19677077860762304,
+            "OWA Sort Score": 0.6989102565941291,
+            "CWA Sort Score": 0.3440662485076592,
+            "Sort Score": 0.5569726533595412,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.83,
+                "Conditional False": 0.31,
+                "Derivate False": 0.27,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.14,
+                "Random False Val": 0.4
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.856675802537329,
+            "OWA Weighted MCC (micro)": 0.43069158543930436,
+            "OWA Weighted AUPRC": 0.6355342852201328,
+            "CAFA Weighted Fmax": 0.5927631355851277,
+            "CAFA AUPRC": 0.24854775726917339,
+            "OWA Sort Score": 0.6409672243989221,
+            "CWA Sort Score": 0.4206554464271506,
+            "Sort Score": 0.5528425132102135,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.9,
+                "Conditional False": 0.2,
+                "Derivate False": 0.14,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.16,
+                "Random False Val": 0.03
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8627261115482452,
+            "OWA Weighted MCC (micro)": 0.4702881672655153,
+            "OWA Weighted AUPRC": 0.7333835559043984,
+            "CAFA Weighted Fmax": 0.4974446174174132,
+            "CAFA AUPRC": 0.19083138261772858,
+            "OWA Sort Score": 0.6887992782393862,
+            "CWA Sort Score": 0.3441380000175709,
+            "Sort Score": 0.5509347669506601,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.76,
+                "Conditional False": 0.08,
+                "Derivate False": 0.03,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.18,
+                "Random False Val": 0.42
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8375812534263284,
+            "OWA Weighted MCC (micro)": 0.45602649979960014,
+            "OWA Weighted AUPRC": 0.663736147145009,
+            "CAFA Weighted Fmax": 0.56113737499627,
+            "CAFA AUPRC": 0.2354639366848322,
+            "OWA Sort Score": 0.6524479667903125,
+            "CWA Sort Score": 0.39830065584055113,
+            "Sort Score": 0.5507890424104079,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.78,
+                "Conditional False": 0.44,
+                "Derivate False": 0.2,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.2,
+                "Random False Val": 0.1
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8220309255609832,
+            "OWA Weighted MCC (micro)": 0.43509229829651075,
+            "OWA Weighted AUPRC": 0.6652667503398194,
+            "CAFA Weighted Fmax": 0.5554243090300487,
+            "CAFA AUPRC": 0.24831918040395434,
+            "OWA Sort Score": 0.6407966580657711,
+            "CWA Sort Score": 0.4018717447170015,
+            "Sort Score": 0.5452266927262632,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.92,
+                "Conditional False": 0.28,
+                "Derivate False": 0.05,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.31,
+                "Random False Val": 0.04
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8127442154709651,
+            "OWA Weighted MCC (micro)": 0.4224658375048638,
+            "OWA Weighted AUPRC": 0.6201640914332994,
+            "CAFA Weighted Fmax": 0.5686828995721221,
+            "CAFA AUPRC": 0.2712078269169839,
+            "OWA Sort Score": 0.6184580481363761,
+            "CWA Sort Score": 0.419945363244553,
+            "Sort Score": 0.5390529741796468,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.95,
+                "Conditional False": 0.34,
+                "Derivate False": 0.2,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.26,
+                "Random False Val": 0.08
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8136008529121402,
+            "OWA Weighted MCC (micro)": 0.4080449108938563,
+            "OWA Weighted AUPRC": 0.6016323639108826,
+            "CAFA Weighted Fmax": 0.5976065514262883,
+            "CAFA AUPRC": 0.26107474635988914,
+            "OWA Sort Score": 0.6077593759056263,
+            "CWA Sort Score": 0.4293406488930887,
+            "Sort Score": 0.5363918851006113,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.79,
+                "Conditional False": 0.4,
+                "Derivate False": 0.34,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.35,
+                "Random False Val": 0.27
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8089710504505794,
+            "OWA Weighted MCC (micro)": 0.4165196535143748,
+            "OWA Weighted AUPRC": 0.6176430510405483,
+            "CAFA Weighted Fmax": 0.5796614357039029,
+            "CAFA AUPRC": 0.2499639395293882,
+            "OWA Sort Score": 0.6143779183351675,
+            "CWA Sort Score": 0.4148126876166456,
+            "Sort Score": 0.5345518260477587,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.85,
+                "Conditional False": 0.31,
+                "Derivate False": 0.17,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.21,
+                "Random False Val": 0.02
+            }
+        },
+        {
+            "OWA Weighted Fmax (micro)": 0.8207615832303702,
+            "OWA Weighted MCC (micro)": 0.4336993052914172,
+            "OWA Weighted AUPRC": 0.6116143210400229,
+            "CAFA Weighted Fmax": 0.565117720569066,
+            "CAFA AUPRC": 0.23922879126595886,
+            "OWA Sort Score": 0.6220250698539368,
+            "CWA Sort Score": 0.4021732559175124,
+            "Sort Score": 0.534084344279367,
+            "Evidence Representation Scheme": {
+                "Phylogenetic True": 0.75,
+                "Conditional False": 0.44,
+                "Derivate False": 0.34,
+                "Random Falses": true,
+                "Random Falses Min Perc": 0.22,
+                "Random False Val": 0.14
+            }
+        }
+    ]
+}

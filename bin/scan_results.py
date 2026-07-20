@@ -9,12 +9,8 @@ from tqdm import tqdm
 
 from custom_statistics import (
     get_ia_vector,
-    ia_adapted_metric,
-    faster_fmax_weighted,
-    faster_fmax_weighted_nan,
     calc_normalized_y_pred,
-    nan_macro_average_precision,
-    mcc_bycol_weighted_masked,
+    get_sorting_score,
 )
 from fuzzy_ml import create_ontology_dictionaries_full, show_y_density
 from train_eval import run_statistics
@@ -47,13 +43,7 @@ eval_metrics = {
 "CAFA Fmax Macro"
 "CAFA AUPRC"
 """
-metric_weights_for_sorting = {
-    "OWA Weighted Fmax (micro)": 1,
-    "OWA Weighted MCC (micro)": 1,
-    "OWA Weighted AUPRC": 1,
-    "CAFA Weighted Fmax": 1,
-    "CAFA AUPRC": 1,
-}
+
 
 url_ou_caminho_obo = "input_data/go-basic.obo"
 parents_dict, children_dict, go_sortings = create_ontology_dictionaries_full(
@@ -96,16 +86,6 @@ def tuples_str_to_dict(tuples_str: str) -> dict:
                 pass
         result[key] = val
     return result
-
-
-def get_sorting_score(results: dict) -> float:
-    total_score = 0
-    for metric_name, metric_value in results.items():
-        if metric_name not in metric_weights_for_sorting:
-            continue
-        total_score += metric_value * metric_weights_for_sorting[metric_name]
-    total_score = total_score / sum(metric_weights_for_sorting.values())
-    return total_score
 
 
 def get_y_tests_for_target_ont(input_tests_dir, ont: str):

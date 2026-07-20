@@ -10,17 +10,7 @@ from sklearn.metrics import average_precision_score
 from scipy.stats import rankdata
 
 from training import train_param_comb
-from custom_statistics import (
-    macro_fmax,
-    nan_macro_average_precision,
-    faster_fmax_weighted,
-    faster_fmax_weighted_nan,
-    get_ia_vector,
-    faster_fmax_weighted_nan,
-    calc_normalized_y_pred,
-    nan_macro_average_precision,
-    mcc_bycol_weighted_masked,
-)
+from custom_statistics import get_ia_vector, run_statistics
 
 go_ia_path = "input_data/go_ia.tsv"
 go_ia_dict = {
@@ -127,38 +117,58 @@ def get_optimal_blend_weights(y_true_original, p_train_1, p_train_2):
     return alphas
 
 
-def train_and_save_preds(train_x, test_x, y_name, y_data, more_negatives):
+def add_random_false_values(train_y, target_min_zeros=0.12, zero_val=0.0):
+    # x != NaN and x < 0.5 = negative evi = zero
+    zeros_mask = (~np.isnan(train_y)) & (train_y < 0.5)
+
+    n_cells_total = train_y.size
+    n_zeros_min = int(n_cells_total * target_min_zeros)
+    n_zeros_current = np.sum(zeros_mask)
+
+    if n_zeros_current < n_zeros_min:
+        n_zeros_to_add = n_zeros_min - n_zeros_current
+
+        # Encontra as coordenadas (flattened) de todos os NaNs disponíveis
+        nan_indices = np.where(np.isnan(train_y).flatten())[0]
+
+        # Garante que não vamos tentar amostrar mais NaNs do que o disponível
+        n_zeros_to_add = min(n_zeros_to_add, len(nan_indices))
+
+        if n_zeros_to_add > 0:
+            # 2. Seleção exata e aleatória sem repetição (garante o número preciso)
+            chosen_nan_indices = np.random.choice(
+                nan_indices, size=n_zeros_to_add, replace=False
+            )
+
+            # Desachata os índices para o formato da matriz original e substitui
+            train_y.ravel()[chosen_nan_indices] = zero_val
+        return train_y, True
+    else:
+        # No need to add more falses
+        return train_y, False
+
+
+def train_and_save_preds(
+    train_x,
+    test_x,
+    y_name,
+    y_data,
+    more_negatives,
+    preds_dir,
+    param_comb,
+    neg_min_perc=0.12,
+    zero_val=0.0,
+):
     train_y = y_data["train"]
     test_y = y_data["test"]
 
     if more_negatives:
         np.random.seed(42)  # Mantém benchmarks reprodutíveis
-        target_min_zeros = 0.12
-        # x != NaN and x < 0.5 = negative evi = zero
-        zeros_mask = (~np.isnan(train_y)) & (train_y < 0.5)
-
-        n_cells_total = train_y.size
-        n_zeros_min = int(n_cells_total * target_min_zeros)
-        n_zeros_current = np.sum(zeros_mask)
-
-        if n_zeros_current < n_zeros_min:
-            n_zeros_to_add = n_zeros_min - n_zeros_current
-
-            # Encontra as coordenadas (flattened) de todos os NaNs disponíveis
-            nan_indices = np.where(np.isnan(train_y).flatten())[0]
-
-            # Garante que não vamos tentar amostrar mais NaNs do que o disponível
-            n_zeros_to_add = min(n_zeros_to_add, len(nan_indices))
-
-            if n_zeros_to_add > 0:
-                # 2. Seleção exata e aleatória sem repetição (garante o número preciso)
-                chosen_nan_indices = np.random.choice(
-                    nan_indices, size=n_zeros_to_add, replace=False
-                )
-
-                # Desachata os índices para o formato da matriz original e substitui
-                train_y.ravel()[chosen_nan_indices] = 0.0
-        else:
+        train_y, added_falses = add_random_false_values(
+            train_y, target_min_zeros=neg_min_perc, zero_val=zero_val
+        )
+        if added_falses is False:
+            print(f"| WARNING | No need to add more falses for {y_name}")
             return None, None, False
 
     preds_result_basename = preds_dir + "/" + y_name
@@ -186,70 +196,6 @@ def train_and_save_preds(train_x, test_x, y_name, y_data, more_negatives):
             np.save(y_pred_train_path, y_pred_train)
 
     return y_pred, y_pred_train, success
-
-
-def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights):
-    n_gos = y_eval_cafa.shape[1]
-    n_bottom_gos = round(n_gos * 0.2)
-    # find n_bottom_gos columns in y_true with smallest sums
-    # bottom_go_indices = np.argsort(y_eval_cafa.sum(axis=0))[:n_bottom_gos]
-    # bottom_go_indices = bottom_go_indices.tolist()
-
-    fmax_mean_cafa, fmax_all_cafa = macro_fmax(y_eval_cafa, y_pred)
-    bottom_fmaxes = sorted(list(fmax_all_cafa))[:n_bottom_gos]
-    fmax_bottom20percent_cafa = np.mean(bottom_fmaxes)
-
-    """fmax_mean_conditional, fmax_all_conditional = macro_fmax(y_eval_owa, y_pred)
-    bottom_fmaxes = sorted(list(fmax_all_conditional))[:n_bottom_gos]
-    fmax_bottom20percent_conditional = np.mean(bottom_fmaxes)"""
-
-    # Find macro AUPRC with scikit-learn
-    auprc_score_cafa = average_precision_score(y_eval_cafa, y_pred, average="macro")
-    auprc_score_owa = nan_macro_average_precision(y_eval_owa, y_pred, weights=weights)
-    """
-    print(f"Fmax mean (CAFA): {fmax_mean_cafa}")
-    print(f"Fmax bottom 20 percent (CAFA): {fmax_bottom20percent_cafa}")
-    print(f"Fmax mean (Conditional): {fmax_mean_conditional}")
-    print(f"Fmax bottom 20 percent (Conditional): {fmax_bottom20percent_conditional}")
-    print(f"AUPRC (Macro) (CAFA): {auprc_score_cafa}")   
-    print(f"AUPRC (Macro) (Conditional): {auprc_score_conditional}")"""
-
-    cafa_fmax, other_metrics = faster_fmax_weighted(
-        y_pred, y_eval_cafa, weights, additional_result="full"
-    )
-    fmax_list = other_metrics["fmax_by_col"]
-    fmax_list_bottom_20 = sorted(fmax_list)[:n_bottom_gos]
-    fmax_bottom20percent_cafa = np.mean(fmax_list_bottom_20)
-
-    cafa_fmax_owa_macro, other_metrics_owa_macro = faster_fmax_weighted_nan(
-        y_pred, y_eval_owa, weights, additional_result="full"
-    )
-    fmax_list2 = other_metrics_owa_macro["fmax_by_col"]
-    fmax_list2_bottom_20 = sorted(fmax_list2)[:n_bottom_gos]
-    fmax_bottom20percent_owa = np.mean(fmax_list2_bottom_20)
-
-    cafa_fmax_owa_micro, other_metrics_owa_micro = faster_fmax_weighted_nan(
-        y_pred, y_eval_owa, weights, additional_result="full", average="micro"
-    )
-
-    mcc_dict = mcc_bycol_weighted_masked(y_pred, y_eval_owa, weights)
-    macro_mcc = mcc_dict["macro_mcc"]
-    weighted_macro_mcc = mcc_dict["weighted_macro_mcc"]
-
-    y_stats = {
-        "OWA Weighted Fmax": cafa_fmax_owa_macro,
-        "OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
-        "OWA Weighted MCC": macro_mcc,
-        "OWA Weighted MCC (micro)": weighted_macro_mcc,
-        "OWA Weighted AUPRC": auprc_score_owa,
-        "OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
-        "CAFA Weighted Fmax": cafa_fmax,
-        "CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
-        "CAFA Fmax Macro": fmax_mean_cafa,
-        "CAFA AUPRC": auprc_score_cafa,
-    }
-
-    return y_stats
 
 
 if __name__ == "__main__":
@@ -314,7 +260,7 @@ if __name__ == "__main__":
         is_classic = y_data["is_classic"]
         print("Training model: ", y_name)
         y_pred, y_pred_train, success = train_and_save_preds(
-            train_x, test_x, y_name, y_data, False
+            train_x, test_x, y_name, y_data, False, preds_dir
         )
         if success:
             stats = run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights)
@@ -344,7 +290,7 @@ if __name__ == "__main__":
     for y_name, y_data in bar2:
         print("Training model with more negatives: ", y_name)
         y_pred_more_negatives, y_pred_more_negatives_train, success_neg = (
-            train_and_save_preds(train_x, test_x, y_name, y_data, True)
+            train_and_save_preds(train_x, test_x, y_name, y_data, True, preds_dir)
         )
         if success_neg:
             stats = run_statistics(
