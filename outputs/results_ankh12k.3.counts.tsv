@@ -1,0 +1,4 @@
+Ontology	Train - Proteins	Train - Experimental and Phylogenetic Negative	Train - Derivated Negative	Train - Conditional Negative	Train - Unlabeled	Train - Phylogenetic Positive	Train - Experimental Positive	Test - Proteins	Test - Experimental and Phylogenetic Negative	Test - Derivated Negative	Test - Conditional Negative	Test - Unlabeled	Test - Phylogenetic Positive	Test - Experimental Positive
+MF	7800	145	1119	21470	298614	1581	4671	4200	70	542	11565	160797	844	2582
+BP	7800	33	1696	18015	300730	759	6367	4200	13	888	9511	162389	332	3267
+CC	7800	704	18194	23951	282838	377	1536	4200	412	9780	12856	152368	209	775

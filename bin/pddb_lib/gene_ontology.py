@@ -1,0 +1,82 @@
+#exp, phylo, curated, comp, iea
+#iea_not, comp_not, conditional_not, derived_not, curated_not, phylo_not, exp_not
+
+ONTOLOGIES_SHORT = {
+    "mf": "Molecular Function",
+    "cc": "Cellular Component",
+    "bp": "Biological Process",
+}
+
+EVIDENCE_GROUP_IMPORTANCE_SEQUENCE = [
+    "exp",
+    "exp_not",
+    "phylo",
+    "phylo_not",
+    "curated",
+    "curated_not",
+    "derived_not",
+    "conditional_not",
+    "comp",
+    "comp_not",
+    "iea",
+    "iea_not",
+]
+
+EVIDENCE_REP_STRATEGIES = {
+    "classic": {
+        "exp": 1.0,
+        "phylo": 1.0,
+        "curated": 1.0,
+        "comp": None,
+        "iea": None,
+        "iea_not": None,
+        "comp_not": None,
+        "conditional_not": None,
+        "curated_not": None,
+        "derived_not": None,
+        "phylo_not": None,
+        "exp_not": None,
+    },
+    "open_world_assumption": {
+        "exp": 1.0,
+        "phylo": 1.0,
+        "curated": 1.0,
+        "comp": None,
+        "iea": None,
+        "iea_not": None,
+        "comp_not": None,
+        "conditional_not": None,
+        "curated_not": 0.0,
+        "derived_not": 0.0,
+        "phylo_not": 0.0,
+        "exp_not": 0.0,
+    },
+    "conditional_negatives": {
+        "exp": 1.0,
+        "phylo": 1.0,
+        "curated": 1.0,
+        "comp": None,
+        "iea": None,
+        "iea_not": None,
+        "comp_not": None,
+        "conditional_not": 0.0,
+        "curated_not": 0.0,
+        "derived_not": 0.0,
+        "phylo_not": 0.0,
+        "exp_not": 0.0,
+    },
+    "soft": {
+        "exp": 1.0,
+        "phylo": 0.9,
+        "curated": 0.8,
+        "comp": None,
+        "iea": None,
+        "iea_not": None,
+        "comp_not": None,
+        "conditional_not": 0.15,
+        "curated_not": 0.01,
+        "derived_not": 0.05,
+        "phylo_not": 0.025,
+        "exp_not": 0.0,
+    },
+}

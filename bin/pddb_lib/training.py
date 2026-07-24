@@ -1,7 +1,7 @@
 from py_boost import GradientBoosting
-from fuzzy_ml import BCEWithNaNLoss, BCEwithNaNMetric
+from pddb_lib.fuzzy_ml import BCEWithNaNLoss, BCEwithNaNMetric
 
-from custom_statistics import fmax, fmax_dual, macro_fmax_dual
+from pddb_lib.custom_statistics import fmax, fmax_dual, macro_fmax_dual
 
 
 def eval_param_comb(params_dict, train_x, test_x, train_y, test_y, mask_nan=True):
