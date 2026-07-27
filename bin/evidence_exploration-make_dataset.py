@@ -20,6 +20,8 @@ from pddb_lib.fuzzy_ml import (
 
 from pddb_lib.sample_traintest import split_traintest
 
+
+
 def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix, 
                         test_ids, train_ids, parents_dict, children_dict, targets_by_ont,
                         used_uniprots_set):

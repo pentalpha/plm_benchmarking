@@ -53,9 +53,14 @@ def load_data(targets_path: str, feature_descs, ids_subset: set=None):
 
     return df
 
-def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None) -> pl.DataFrame:
+def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None, y_to_use: list = None) -> pl.DataFrame:
     # 1. Initialize the base LazyFrame
-    base_lf = pl.scan_parquet(targets_path)
+    if y_to_use != None:
+        #Load only the specified columns
+        base_lf = pl.scan_parquet(targets_path).select(["id"] + y_to_use)
+    else:
+        #Load all y columns
+        base_lf = pl.scan_parquet(targets_path)
     
     # Filter targets immediately if a subset is provided to minimize memory usage
     if ids_subset is not None:
@@ -103,3 +108,14 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
 
     # Return as a new Polars DataFrame
     return pl.DataFrame(df_dict)
+
+def smart_str_parsing(val: str):
+    if "." in val and val.replace('.', '').isdigit():
+        return float(val)
+    elif val.isdigit():
+        return int(val)
+    elif val.lower() in ['true', 'false']:
+        return val.lower() == "true"
+    else:
+        print(val, 'is a string')
+        return val

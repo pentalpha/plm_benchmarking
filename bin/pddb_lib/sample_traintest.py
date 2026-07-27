@@ -188,6 +188,24 @@ def split_traintest(n_ont_target, min_annotations):
     print(f"Train proteins: {len(train_proteins)}")
     print(f"Total proteins: {len(shuffled_list)}")
 
+def sample_train_proteins_by_inf(ids, y, targets, go_ia_dict, 
+        max_proteins):
+    #Protein weight = sum(IAs)
+    #Reverse sort by weight
+    #Take firsts
+    weights_vec = [go_ia_dict[go] for go in targets]
+    not_nan = ~np.isnan(y)
+    weighted_not_nan = not_nan * weights_vec
+    row_sums = weighted_not_nan.sum(axis=1)
+    weights_by_id = {uniprot: row_sums[index]
+        for index, uniprot in enumerate(ids)}
+
+    ids_sorted = sorted(ids, 
+        key = lambda uniprot: (weights_by_id[uniprot], uniprot), reverse=True)
+    ids_sampled = ids_sorted[:max_proteins]
+
+    return ids_sampled
+
 if __name__ == "__main__":
     n_ont_target = int(sys.argv[1])
     min_annotations = int(sys.argv[2])

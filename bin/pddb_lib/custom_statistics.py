@@ -426,63 +426,6 @@ def faster_fmax_weighted(
     else:
         return f1, max_th
 
-
-def calc_normalized_y_pred(
-    y_pred, go_names, parents_dict, children_dict, go_sortings, verbose=False
-):
-    n_samples, n_classes = y_pred.shape
-    go_to_idx = {go_name: i for i, go_name in enumerate(go_names)}
-
-    preorder = go_sortings["preorder"]
-    postorder = go_sortings["postorder"]
-
-    # MATRIZ 1: PROPAGAÇÃO BOTTOM-UP (Fórmula exata da Imagem)
-    y_max_children = y_pred.copy()
-    for go_id in postorder:
-        if go_id not in go_to_idx:
-            continue
-
-        node_idx = go_to_idx[go_id]
-        child_cols = [
-            go_to_idx[c] for c in children_dict.get(go_id, []) if c in go_to_idx
-        ]
-
-        if child_cols:
-            max_of_children = np.max(y_max_children[:, child_cols], axis=1)
-            # A fórmula exata da imagem do CAFA:
-            propagated_val = max_of_children * 0.7 + y_max_children[:, node_idx] * 0.3
-            # A propagação bottom-up eleva o score se os filhos tiverem pontuação alta
-            y_max_children[:, node_idx] = np.maximum(
-                y_max_children[:, node_idx], propagated_val
-            )
-
-    # MATRIZ 2: PROPAGAÇÃO TOP-DOWN (O inverso da Imagem)
-    y_min_parents = y_pred.copy()
-    for go_id in preorder:
-        if go_id not in go_to_idx:
-            continue
-
-        node_idx = go_to_idx[go_id]
-        parent_cols = [
-            go_to_idx[p] for p in parents_dict.get(go_id, []) if p in go_to_idx
-        ]
-
-        if parent_cols:
-            min_of_parents = np.min(y_min_parents[:, parent_cols], axis=1)
-            # A fórmula exata da imagem, mas para os pais:
-            propagated_val = min_of_parents * 0.7 + y_min_parents[:, node_idx] * 0.3
-            # A propagação top-down rebaixa o score se os pais tiverem pontuação baixa
-            y_min_parents[:, node_idx] = np.minimum(
-                y_min_parents[:, node_idx], propagated_val
-            )
-
-    # MATRIZ 3: O BLEND FINAL DO TEXTO DO PAPER
-    # Média entre a Predição Raw, a Máxima Inferida (Filhos) e a Mínima Inferida (Pais)
-    y_final = (y_pred + y_max_children + y_min_parents) / 3.0
-
-    return y_final
-
-
 def faster_fmax_weighted_nan(
     pred_scores: np.ndarray,
     truth_set: np.ndarray,
