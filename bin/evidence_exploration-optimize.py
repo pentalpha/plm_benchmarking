@@ -20,6 +20,10 @@ from pddb_lib.custom_statistics import run_statistics, get_sorting_score
 
 N_COMBINATIONS = 50
 
+'''
+python bin\evidence_exploration-optimize.py N_TARGETS MIN_ANNOTATIONS MAX_TRAIN_PROTEINS \
+    Y_DATASET_NAME USE_RANDOM_NEGATIVE_SAMPLING TEST_DIR <[<embedding_path>:col1,col2,...],...> 
+'''
 if __name__ == "__main__":
     go_ia_path = "input_data/go_ia.tsv"
 
