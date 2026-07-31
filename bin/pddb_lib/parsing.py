@@ -53,7 +53,8 @@ def load_data(targets_path: str, feature_descs, ids_subset: set=None):
 
     return df
 
-def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None, y_to_use: list = None) -> pl.DataFrame:
+def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None, 
+        y_to_use: list = None) -> pl.DataFrame:
     # 1. Initialize the base LazyFrame
     if y_to_use != None:
         #Load only the specified columns
@@ -68,20 +69,25 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
 
     y_cols = [c for c in base_lf.collect_schema().names() if "y_" in c]
     all_feature_cols = []
+    print(base_lf)
 
     # 2. Iteratively Inner Join feature datasets
     # This natively finds the exact intersection of all IDs across all files 
     # AND perfectly aligns the rows, eliminating the need for sorting.
-    for parquet_path, col_names, embname in feature_descs:
+    for fdesc_raw in feature_descs:
+        parquet_path = fdesc_raw.split(':')[0]
+        col_names = fdesc_raw.split(':')[1].split(',')
         # Select only 'id' and the necessary features to avoid loading unused columns
         feat_lf = pl.scan_parquet(parquet_path).select(["id"] + col_names)
         
         # Inner join automatically handles matching and filtering
         base_lf = base_lf.join(feat_lf, on="id", how="inner")
         all_feature_cols.extend(col_names)
+        print(base_lf)
 
     # 3. Trigger the Polars execution graph once
     df = base_lf.collect()
+    print(df)
 
     # 4. Extract target arrays
     df_dict = {
@@ -105,12 +111,20 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
     
     # Concatenate all matrices horizontally
     df_dict["X"] = list(np.concatenate(x_arrays, axis=1))
+    new_df = pl.DataFrame(df_dict)
+    print(new_df)
 
     # Return as a new Polars DataFrame
-    return pl.DataFrame(df_dict)
+    return new_df
 
 def smart_str_parsing(val: str):
-    if "." in val and val.replace('.', '').isdigit():
+    if type(val) in [np.int64, np.int32]:
+        return int(val)
+    elif type(val) in [np.float64, np.float32]:
+        return float(val)
+    elif type(val) in [np.bool_]:
+        return bool(val)
+    elif "." in val and val.replace('.', '').isdigit():
         return float(val)
     elif val.isdigit():
         return int(val)

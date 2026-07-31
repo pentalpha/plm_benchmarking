@@ -1,5 +1,6 @@
 import obonet
 import networkx as nx
+import numpy as np
 
 #exp, phylo, curated, comp, iea
 #iea_not, comp_not, conditional_not, derived_not, curated_not, phylo_not, exp_not
@@ -188,11 +189,11 @@ def create_ontology_dictionaries_full0(obo_path: str):
 def create_ontology_dictionaries_full(obo_path: str):
     go_graph = obonet.read_obo(obo_path)
 
-    # descendants pega TODOS os ancestrais (pula nós que ficaram de fora dos targets)
+    # descendants pega TODOS os ancestrais
     parents_dict = {
         go_id: set(nx.descendants(go_graph, go_id)) for go_id in go_graph.nodes
     }
-    # ancestors pega TODOS os descendentes (pula nós que ficaram de fora dos targets)
+    # ancestors pega TODOS os descendentes
     children_dict = {
         go_id: set(nx.ancestors(go_graph, go_id)) for go_id in go_graph.nodes
     }

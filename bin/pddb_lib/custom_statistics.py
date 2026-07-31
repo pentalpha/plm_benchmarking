@@ -1,9 +1,10 @@
-import numpy as np
+
 import warnings
-from sklearn.metrics import average_precision_score
-from tqdm import tqdm
 from typing import Tuple, List
 
+from sklearn.metrics import average_precision_score
+from tqdm import tqdm
+import numpy as np
 
 def get_ia_vector(term_list: List[str], ia_weights) -> np.ndarray:
     """

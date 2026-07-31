@@ -1,19 +1,15 @@
-from torch import __name
 import sys
-import polars as pl
 from collections import defaultdict
 import random
-import pandas as pd
-from tqdm import tqdm
-import numpy as np
-import obonet
 from collections import Counter
 
-from fuzzy_ml import (
-    create_ontology_dictionaries,
-    find_conditional_zeros,
-    find_conditional_zeros_inverse,
-    show_y_density,
+import numpy as np
+import pandas as pd
+import polars as pl
+from tqdm import tqdm
+
+from pddb_lib.gene_ontology import (
+    create_ontology_dictionaries_full
 )
 
 # python bin/sample_traintest.py [n_targets:int] [min_annotations:int]
@@ -25,32 +21,55 @@ bp_path = "input_data/go.bp.parquet"
 deepgo_path = "input_data/deeploc.parquet"
 url_ou_caminho_obo = "input_data/go-basic.obo"
 
-def count_annots_by_goid(ont_parquet, evi_cols):
+def count_annots_by_goid(ont_parquet, evi_cols, parents_dict, children_dict):
     annots_by_goid = {}
     uniprot_to_goids = defaultdict(set)
 
-    bar = tqdm(total=ont_parquet.height, desc="Listing uniprot annotations")
+    bar = tqdm(total=ont_parquet.height, desc="Expanding uniprot annotations to count")
     for row in ont_parquet.iter_rows(named=True):
         uniprot = row["id"]
+        all_gos = set()
         for evi_col in evi_cols:
             items = row[evi_col]
             if len(items) > 0:
                 for goid in items:
-                    uniprot_to_goids[uniprot].add(goid)
-                    if goid not in annots_by_goid:
-                        annots_by_goid[goid] = 0
-                    annots_by_goid[goid] += 1
+                    if '_not' in evi_col:
+                        expansion_dict = children_dict
+                    else:
+                        expansion_dict = parents_dict
+                    
+                    new_ids = set()
+                    for goid in [x for x in items if x in expansion_dict]:
+                        new_ids.update(expansion_dict[goid])
+                    
+                    if len(new_ids) > 0:
+                        all_gos.update(new_ids)
+                    all_gos.add(goid)
+            
+        uniprot_to_goids[uniprot] = list(all_gos)
+        bar.update(1)
+    bar.close()
+
+    bar = tqdm(total=len(uniprot_to_goids), desc="Counting annotations per GO")
+    for uniprot, goids in uniprot_to_goids.items():
+        for goid in goids:
+            if not goid in annots_by_goid:
+                annots_by_goid[goid] = 0
+            annots_by_goid[goid] += 1
         bar.update(1)
     bar.close()
     return annots_by_goid, uniprot_to_goids
 
 def split_traintest(n_ont_target, min_annotations):
     output_prefix = f"outputs/n_ont_target={n_ont_target}-min_proteins={min_annotations}"
-    parents_dict, children_dict = create_ontology_dictionaries(url_ou_caminho_obo)
+    parents_dict, children_dict, _ = create_ontology_dictionaries_full(url_ou_caminho_obo)
     go_ia_dict = {}
     for rawline in open(go_ia_path, "r"):
         goid, ia = rawline.strip().split("\t")
         go_ia_dict[goid] = float(ia)
+    print(f"Loaded Inf. Accretion for {len(go_ia_dict)} GO terms")
+    mean_ia = sum(go_ia_dict.values()) / len(go_ia_dict)
+    print(f"Mean IA: {mean_ia}")
 
     evi_cols = ["exp", "phylo", "curated"]
     evi_cols += [e + "_not" for e in evi_cols] + ["derived_not"]
@@ -68,7 +87,9 @@ def split_traintest(n_ont_target, min_annotations):
         (bp_path, "bp"),
     ]:
         print("Loading", parquet_path)
-        counts_dict, uniprot_annots = count_annots_by_goid(pl.read_parquet(parquet_path), evi_cols)
+        annots_df = pl.read_parquet(parquet_path)
+        counts_dict, uniprot_annots = count_annots_by_goid(annots_df, evi_cols, 
+            parents_dict, children_dict)
         go_counts[ont_name] = counts_dict
         for uniprot, goids in uniprot_annots.items():
             go_by_uniprot[uniprot].update(goids)
@@ -93,13 +114,22 @@ def split_traintest(n_ont_target, min_annotations):
         goid_counts_df.to_csv(counts_path, sep="\t", index=False)
 
         frequent_goids = goid_counts_df["goid"].to_list()
-        goid_counts_df["ia"] = goid_counts_df["goid"].apply(
-            lambda x: go_ia_dict.get(x, 0.0)
-        )
+        ias = [go_ia_dict.get(goid, 0.0) for goid in frequent_goids]
+        non_zero_ias = [ia for ia in ias if ia > 0]
+        print(f"Number of GO terms with IA > 0: {len(non_zero_ias)}")
+        print(f"Mean IA of GO terms with IA > 0: {sum(non_zero_ias) / len(non_zero_ias)}")
+        goid_counts_df["ia"] = ias
+        print(goid_counts_df.head())
+        before = len(goid_counts_df)
         goid_counts_df = goid_counts_df[goid_counts_df["ia"] > 0]
+        print(f"Removed {before - len(goid_counts_df)} GO terms with IA = 0",
+            f"Remaining: {len(goid_counts_df)}")
+        before = len(goid_counts_df)
         goid_counts_df = goid_counts_df[
             goid_counts_df["annotation_count"] > min_annotations
         ]
+        print(f"Removed {before - len(goid_counts_df)} GO terms with less than {min_annotations} annotations",
+            f"Remaining: {len(goid_counts_df)}")
         # Multiply frequency with ia
         goid_counts_df["weighted_count"] = (
             goid_counts_df["annotation_count"] * goid_counts_df["ia"]
@@ -153,7 +183,7 @@ def split_traintest(n_ont_target, min_annotations):
 
     not_in_validation = [1, 2, 3]
     while len(not_in_validation) > 0:
-        min_count = round(min_annotations * VAL_PERC * 0.8)
+        min_count = round(min_annotations * VAL_PERC * 0.75)
         print("Shuffling ...")
         random.shuffle(shuffled_list)
         random.shuffle(shuffled_list)

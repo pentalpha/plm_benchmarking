@@ -1,4 +1,3 @@
-from torch import __name
 import sys
 import os
 from collections import defaultdict
@@ -9,21 +8,23 @@ from tqdm import tqdm
 import numpy as np
 import obonet
 
-from pddb_lib.gene_ontology import EVIDENCE_REP_STRATEGIES, EVIDENCE_GROUP_IMPORTANCE_SEQUENCE
-
-from pddb_lib.fuzzy_ml import (
-    create_ontology_dictionaries,
+from pddb_lib.gene_ontology import (EVIDENCE_REP_STRATEGIES, 
+    EVIDENCE_GROUP_IMPORTANCE_SEQUENCE, create_ontology_dictionaries,
+    create_ontology_dictionaries_full)
+from pddb_lib.training import (
     find_conditional_zeros,
-    find_conditional_zeros_inverse,
+    #find_conditional_zeros_inverse,
     show_y_density,
 )
-
 from pddb_lib.sample_traintest import split_traintest
 
-
+url_ou_caminho_obo = "input_data/go-basic.obo"
+parents_dict, children_dict = create_ontology_dictionaries(url_ou_caminho_obo)
+parents_dict_full, children_dict_full, go_sortings = create_ontology_dictionaries_full(
+    url_ou_caminho_obo)
 
 def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix, 
-                        test_ids, train_ids, parents_dict, children_dict, targets_by_ont,
+                        test_ids, train_ids, targets_by_ont,
                         used_uniprots_set):
     annots_parquet_path = "input_data/go." + ont_name + ".parquet"
     mf_parquet = pl.read_parquet(annots_parquet_path)
@@ -53,6 +54,21 @@ def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix,
 
         cols_present = [c for c in evicols_to_copy if c in new_row]
         cols_present = [c for c in cols_present if len(new_row[c]) > 0]
+
+        for col_name in cols_present:
+            current_goids = new_row[col_name]
+            if '_not' in col_name:
+                #Get descendants
+                expansion_dict = children_dict_full
+            else:
+                expansion_dict = parents_dict_full
+            
+            new_ids = set()
+            for goid in current_goids:
+                if goid in expansion_dict:
+                    new_ids.update(expansion_dict[goid])
+                new_ids.add(goid)
+            new_row[col_name] = new_ids
         
         for i, col_name in enumerate(cols_present):
             if i != len(cols_present) - 1:
@@ -71,21 +87,17 @@ def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix,
                         event_dict[event_name] += len(intersection)
                         new_row[next_col] -= intersection
         
-        exp_negatives += len(new_row["negative"])
+        exp_negatives += len(new_row["exp_not"])
 
         all_confirmed = new_row["exp"] | new_row["phylo"] | new_row["curated"]
         all_nots = new_row["exp_not"] | new_row["phylo_not"] | new_row["curated_not"] | new_row["derived_not"]
 
-        new_row["conditional_negative"] = find_conditional_zeros(
+        new_row["conditional_not"] = find_conditional_zeros(
             all_confirmed,
             all_nots,
             children_dict,
         )
-        new_row["annotation_count"] = len(
-            all_confirmed | all_nots
-        )
-        uniprot2go[row["id"]] = new_row
-
+        
         new_der_neg += len(new_row["derived_not"])
         if len(new_row["derived_not"]) > 0:
             has_derivated_neg.add(row["id"])
@@ -97,6 +109,11 @@ def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix,
                 if not col_name in new_annots_dict:
                     new_annots_dict[col_name] = 0
                 new_annots_dict[col_name] += len(annots)
+        
+        new_row["annotation_count"] = len(
+            all_confirmed | all_nots
+        )
+        uniprot2go[row["id"]] = new_row
 
     print(f"Exp negatives: {exp_negatives}")
     print(f"New derivated negatives: {new_der_neg}")
@@ -128,10 +145,11 @@ def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix,
     dfs = []
 
     for split_name, split_ids in splits:
-        local_ids = [x for x in uniprot2go.keys() if x in split_ids]
-        n_proteins = len(local_ids)
+        #local_ids = [x for x in uniprot2go.keys() if x in split_ids]
+        local_ids = split_ids
+        n_proteins = len(split_ids)
         df_dict = {
-            "id": local_ids,
+            "id": split_ids,
         }
 
         for strat_name, strat_vals in EVIDENCE_REP_STRATEGIES.items():
@@ -141,19 +159,20 @@ def make_dataset_for_ont(ont_name, n_targets, min_annotations, sampling_prefix,
             else:
                 y = np.full((n_proteins, len(goids)), np.nan)
 
-            for i, uniprot in tqdm(enumerate(local_ids), desc="Populating y matrix"):
-                protein_annots_by_type = uniprot2go[uniprot]
+            for i, uniprot in tqdm(enumerate(split_ids), desc="Populating y matrix"):
+                if uniprot in uniprot2go:
+                    protein_annots_by_type = uniprot2go[uniprot]
 
-                for j, goid in enumerate(goids):
-                    annot_type = None
-                    for t in evicols_to_use:
-                        if goid in protein_annots_by_type[t]:
-                            annot_type = t
-                            break
-                    if annot_type is not None:
-                        val = strat_vals[annot_type]
-                        if val is not None:
-                            y[i, j] = val
+                    for j, goid in enumerate(goids):
+                        annot_type = None
+                        for t in evicols_to_use:
+                            if goid in protein_annots_by_type[t]:
+                                annot_type = t
+                                break
+                        if annot_type is not None:
+                            val = strat_vals[annot_type]
+                            if val is not None:
+                                y[i, j] = val
 
             df_dict["y_" + strat_name] = y
 
@@ -198,8 +217,7 @@ if __name__ == "__main__":
         ont: [go.strip() for go in open(sampling_prefix + "." + ont + ".targets.txt")]
         for ont in ["mf", "cc", "bp"]
     }
-    url_ou_caminho_obo = "input_data/go-basic.obo"
-    parents_dict, children_dict = create_ontology_dictionaries(url_ou_caminho_obo)
+    
 
     test_ids = [l.strip() for l in open(test_path)]
     train_ids = [l.strip() for l in open(train_path)]
@@ -208,5 +226,4 @@ if __name__ == "__main__":
 
     for ont in ["mf", "cc", "bp"]:
         make_dataset_for_ont(ont, n_targets, min_annotations, sampling_prefix, 
-            test_ids, train_ids, parents_dict, children_dict, targets_by_ont,
-            used_uniprots_set)
+            test_ids, train_ids, targets_by_ont, used_uniprots_set)

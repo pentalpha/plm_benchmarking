@@ -8,6 +8,8 @@ outputs/*.log
 outputs/*.parquet
 outputs/emb_tests
 outputs/old
+outputs/old2
+outputs/evidence_exploration_small_test
 outputs/*.csv
 outputs/metaparameters/
 outputs/.xlsx

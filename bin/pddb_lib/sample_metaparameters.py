@@ -134,6 +134,10 @@ GENE_NAMES = {
 
 
 def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
+    if try_more:
+        random.seed(42)
+        np.random.seed(42)
+
     options = []
     for genename in genenames:
         gene_vals_raw = hyperparameter_space3[genename]
@@ -141,17 +145,22 @@ def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
             min_val = gene_vals_raw["min"]
             max_val = gene_vals_raw["max"]
             #Sample 100 options in range:
-            options.append([round(float(val), 2) for val in list(np.linspace(min_val, max_val, num=100))])
+            range_options = [round(float(val), 2) for val in list(np.linspace(min_val, max_val, num=100))]
+            range_options = [min_val] + range_options + [max_val]
+            options.append(range_options)
         elif type(gene_vals_raw) == list:
             options.append(gene_vals_raw)
     
-    random.seed(42)
-    np.random.seed(42)
-
-    param_combs = []
+    choices_by_gene = []
     for options_list in options:
         choices = [x for x in np.random.choice(options_list, size=n_combinations, replace=True)]
-        param_combs.append(choices)
+        choices_by_gene.append(choices)
+    
+    param_combs = []
+    for comb_index in range(n_combinations):
+        comb = [choices_by_gene[gene_index][comb_index] 
+            for gene_index in range(len(choices_by_gene))]
+        param_combs.append(comb)
     
     param_combs_valid = set()
     for comb in param_combs:
@@ -164,7 +173,7 @@ def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
     while len(param_combs_valid) < n_combinations and try_more:
         next_batch = n_combinations - len(param_combs_valid)
         print(f"| INFO | Generating {next_batch} additional combinations...")
-        new_combs = generate_fuzzy_metaparameters(n_combinations, try_more=False)
+        new_combs = generate_for_genelist(n_combinations, genenames, try_more=False)
         actually_new = new_combs - param_combs_valid
         if len(actually_new) > next_batch:
             actually_new = set(random.sample(list(actually_new), next_batch))
