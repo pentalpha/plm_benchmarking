@@ -14,16 +14,15 @@ from pddb_lib.gene_ontology import (ONTOLOGIES_SHORT, CWA_DATASET_NAME, OWA_DATA
 from pddb_lib.parsing import load_data_optimized, smart_str_parsing
 from pddb_lib.sample_metaparameters import generate_for_genelist, GENE_NAMES
 from pddb_lib.sample_metaparameters import update_y_data_with_new_values2 as update_y_data_with_new_values
-from pddb_lib.training import add_random_false_values
-from pddb_lib.training import train_and_pred
-#from pddb_lib.training import train_and_pred_failsafe as train_and_pred
-from pddb_lib.custom_statistics import run_statistics, get_sorting_score
+from pddb_lib.manipulate_y import add_random_false_values, show_y_density
+from pddb_lib.training import train_and_pred, reduce_train_negatives_to
+from pddb_lib.optimization_utils import go_ia_path, run_eval
 
 '''
 python bin\evidence_exploration-optimize.py N_TARGETS MIN_ANNOTATIONS MAX_TRAIN_PROTEINS Y_DATASET_NAME USE_RANDOM_NEGATIVE_SAMPLING TEST_DIR <[<embedding_path>:col1,col2,...],...> 
 '''
+
 if __name__ == "__main__":
-    go_ia_path = "input_data/go_ia.tsv"
 
     n_targets = int(sys.argv[1])
     min_annotations = int(sys.argv[2])
@@ -33,6 +32,7 @@ if __name__ == "__main__":
     use_soft_labeling = "soft" in y_dataset_name
     test_dir = sys.argv[6]
     n_combinations = int(sys.argv[7])
+    outputs_dir = 'outputs/'
     feature_descs = sys.argv[8:]
 
     print(f"n_targets={n_targets}")
@@ -42,7 +42,10 @@ if __name__ == "__main__":
     print(f"use_random_negative_sampling={use_random_negative_sampling}")
     print(f"use_soft_labeling={use_soft_labeling}")
     print(f"test_dir={test_dir}")
+    print(f"outputs_dir={outputs_dir}")
     print(f"feature_descs={feature_descs}")
+
+    uses_nan = not 'classic' in y_dataset_name
     
     parents_dict, children_dict, go_sortings = create_ontology_dictionaries_full("input_data/go-basic.obo")
 
@@ -55,7 +58,7 @@ if __name__ == "__main__":
     if use_random_negative_sampling:
         alg_name += "+rns"
 
-    sampling_prefix = f"outputs/n_ont_target={n_targets}-min_proteins={min_annotations}"
+    sampling_prefix = f"{outputs_dir}/n_ont_target={n_targets}-min_proteins={min_annotations}"
     test_path = f"{sampling_prefix}.test_set.txt"
     train_path = f"{sampling_prefix}.train_set.txt"
 
@@ -141,6 +144,8 @@ if __name__ == "__main__":
         desc="Training models",
     )
 
+    os.makedirs(test_dir, exist_ok=True)
+
     for param_comb in targets_progress_bar:
         params_dict = dict(zip(genenames, param_comb))
 
@@ -150,11 +155,30 @@ if __name__ == "__main__":
         test_path = os.path.join(test_dir, test_basename)
         os.makedirs(test_path, exist_ok=True)
 
+        assert os.path.exists(test_path)
+
         test_preds_path = os.path.join(test_path, "y_pred.parquet")
         if os.path.exists(test_preds_path):
             print("Raw predictions already exist. Loading them...")
-            y_preds = pl.read_parquet(test_preds_path)
-            success = True
+            try:
+                y_preds = pl.read_parquet(test_preds_path)
+                
+            except Exception as e:
+                print(f"Error loading predictions: {e}")
+                success = False
+                # Remove bad file
+                os.remove(test_preds_path)
+                y_preds = None
+
+            if y_preds is not None:
+                eval_metrics = run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, 
+                    parents_dict, children_dict, go_sortings)
+                if eval_metrics is not None:
+                    models_trained.append(eval_metrics)
+                    success = True
+                else:
+                    os.remove(test_preds_path)
+                    success = False
         else:
             y_preds = {}
             for ont, dataset_dict in datasets_by_ont.items():
@@ -176,57 +200,48 @@ if __name__ == "__main__":
                         test_y, params_dict
                     )
                 
+                train_x = np.ascontiguousarray(train_x, dtype=np.float32).copy()
+                train_y = np.ascontiguousarray(train_y, dtype=np.float32).copy()
+                test_x = np.ascontiguousarray(test_x, dtype=np.float32).copy()
+                test_y = np.ascontiguousarray(test_y, dtype=np.float32).copy()
+
+                #Make sure seed is always 1337
+                np.random.seed(1337)
+                random.seed(1337)
+
+                train_x, train_y = reduce_train_negatives_to(train_x, train_y, target_ratio=0.15, 
+                                                            use_nan=uses_nan)
+                
                 if use_random_negative_sampling:
                     zero_val = 0.0
                     if "Random False Val" in params_dict:
                         zero_val = params_dict["Random False Val"]
                     minperc = params_dict["Random Falses Min Perc"]*100
                     print(f"Adding {minperc}% RNS with value {zero_val}")
-                    train_y, already_had_not_perc = add_random_false_values(train_y, 
+                    show_y_density(train_y)
+                    train_y, added_nots = add_random_false_values(train_y, 
                         target_min_zeros = params_dict["Random Falses Min Perc"], zero_val=zero_val)
+                    already_had_not_perc = not added_nots
                     print(f"Already had {minperc}% nots? {already_had_not_perc}")
+                    show_y_density(train_y)
 
                 else:
                     already_had_not_perc = None
                 y_pred = train_and_pred(train_x, train_y, test_x, test_y, 
-                    params_dict)
+                    params_dict, uses_nan)
                 y_preds["id"] = test_ids
                 y_preds[ont] = y_pred
-                if already_had_not_perc:
-                    y_preds[ont+" - exception"] = f"Nots already >= {minperc}%"
+                #if already_had_not_perc:
+                #    y_preds[ont+" - exception"] = f"Nots already >= {minperc}%"
             y_preds = pl.DataFrame(y_preds)
             y_preds.write_parquet(test_preds_path)
+            eval_metrics = run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, 
+                    parents_dict, children_dict, go_sortings)
+            models_trained.append(eval_metrics)
             success = True
-
-        eval_metrics = {}
-
-        for ont, datasets_dict in datasets_by_ont.items():
-            y_pred = y_preds[ont].to_numpy()
-            y_test_cwa = datasets_dict['test_df']["y_"+CWA_DATASET_NAME].to_numpy()
-            y_test_owa = datasets_dict['test_df']["y_"+OWA_DATASET_NAME].to_numpy()
-            labels = datasets_dict["targets"]
-            weights = np.array([go_ia_dict.get(t, 0) for t in labels])
-
-            y_pred_norm = calc_normalized_y_pred(
-                y_pred, labels, parents_dict, children_dict, go_sortings[ont.upper()]
-            )
-            stats_norm = run_statistics(y_pred_norm, y_test_cwa, y_test_owa, weights)
-            stats_norm["Sort Score"] = get_sorting_score(stats_norm)
-            print("Normalized stats:", stats_norm)
-
-            exception_col = None
-            if f"{ont} - exception" in y_preds.columns:
-                exception_col = ';'.join(y_preds[f"{ont} - exception"].to_list())
-                eval_metrics[f"{ont.upper()} - exception"] = exception_col
-
-            for metric_name, metric_val in stats_norm.items():
-                eval_metrics[f"{ont.upper()} - {metric_name}"] = metric_val            
-
-        eval_metrics["parameters"] = json.dumps(params_dict, ensure_ascii=False)
-
-        models_trained.append(eval_metrics)
-
-        #Store results
-        all_results_df = pd.DataFrame(models_trained)
-        all_results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
-        print("\n\nResults stored in", f"{test_dir}/all_results.tsv")
+        
+        if success:
+            #Store results
+            all_results_df = pd.DataFrame(models_trained)
+            all_results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
+            print("\n\nResults stored in", f"{test_dir}/all_results.tsv")   

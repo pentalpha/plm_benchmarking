@@ -69,7 +69,7 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
 
     y_cols = [c for c in base_lf.collect_schema().names() if "y_" in c]
     all_feature_cols = []
-    print(base_lf)
+    #print(base_lf)
 
     # 2. Iteratively Inner Join feature datasets
     # This natively finds the exact intersection of all IDs across all files 
@@ -83,11 +83,11 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
         # Inner join automatically handles matching and filtering
         base_lf = base_lf.join(feat_lf, on="id", how="inner")
         all_feature_cols.extend(col_names)
-        print(base_lf)
+        #print(base_lf)
 
     # 3. Trigger the Polars execution graph once
     df = base_lf.collect()
-    print(df)
+    #print(df)
 
     # 4. Extract target arrays
     df_dict = {

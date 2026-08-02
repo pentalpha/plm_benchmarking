@@ -11,7 +11,7 @@ import obonet
 from pddb_lib.gene_ontology import (EVIDENCE_REP_STRATEGIES, 
     EVIDENCE_GROUP_IMPORTANCE_SEQUENCE, create_ontology_dictionaries,
     create_ontology_dictionaries_full)
-from pddb_lib.training import (
+from pddb_lib.manipulate_y import (
     find_conditional_zeros,
     #find_conditional_zeros_inverse,
     show_y_density,
@@ -202,8 +202,9 @@ if __name__ == "__main__":
 
     n_targets = int(sys.argv[1])
     min_annotations = int(sys.argv[2])
+    output_dir = 'outputs/'
 
-    sampling_prefix = f"outputs/n_ont_target={n_targets}-min_proteins={min_annotations}"
+    sampling_prefix = f"{output_dir}/n_ont_target={n_targets}-min_proteins={min_annotations}"
     test_path = f"{sampling_prefix}.test_set.txt"
     train_path = f"{sampling_prefix}.train_set.txt"
     deeploc_targets_path = sampling_prefix + ".deeploc.targets.txt"

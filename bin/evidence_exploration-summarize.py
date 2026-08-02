@@ -18,9 +18,10 @@ if __name__ == "__main__":
     n_targets = int(sys.argv[1])
     min_annotations = int(sys.argv[2])
     max_train_proteins = int(sys.argv[3]) #downsampling after loading
+    outputs_dir = 'outputs/'
     test_dir = sys.argv[4]
 
-    sampling_prefix = f"outputs/n_ont_target={n_targets}-min_proteins={min_annotations}"
+    sampling_prefix = f"{outputs_dir}/n_ont_target={n_targets}-min_proteins={min_annotations}"
     test_path = f"{sampling_prefix}.test_set.txt"
     train_path = f"{sampling_prefix}.train_set.txt"
 
@@ -47,24 +48,26 @@ if __name__ == "__main__":
             alg_df = pd.read_csv(results_tsv, sep="\t")
             for _, row in alg_df.iterrows():
                 for ont in ['MF', 'CC', "BP"]:
-                    if f"{ont} - exception" in row.keys():
-                        print('Exception in training:', row['parameters'], row[f"{ont} - exception"])
-                    else:
-                        new_row = {
-                            "Algorithm": alg_name,
-                            "Ontology": ont,
-                        }
-                        for key, value in row.items():
-                            if f"{ont} - " in key:
-                                stat_key = key.replace(f"{ont} - ", "")
-                                new_row[stat_key] = value
-                            
-                        new_row['Parameters'] = row['parameters']
-                        result_lines.append(new_row)
+                    #if f"{ont} - exception" in row.keys():
+                    #    print('Exception in training:', row['parameters'], row[f"{ont} - exception"])
+                    #else:
+                    new_row = {
+                        "Algorithm": alg_name,
+                        "Ontology": ont,
+                    }
+                    for key, value in row.items():
+                        if f"{ont} - " in key:
+                            stat_key = key.replace(f"{ont} - ", "")
+                            new_row[stat_key] = value
+                        
+                    new_row['Parameters'] = row['parameters']
+                    result_lines.append(new_row)
         else:
             print("Results not found for", alg_name)
     
     results_df = pd.DataFrame(result_lines)
+    results_df["OWA Score"] = (results_df["OWA Weighted Fmax (micro)"] + results_df["OWA Weighted MCC (micro)"] + results_df["OWA Weighted AUPRC"])/3
+    results_df["CWA Score"] = (results_df["CAFA Weighted Fmax"] + results_df["CAFA AUPRC"])/2
     results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
 
     best_param_lines = []
@@ -78,9 +81,12 @@ if __name__ == "__main__":
     
     best_param_lines_df = pd.DataFrame(best_param_lines)
     best_param_lines_df.sort_values(by=['Sort Score'], ascending=False, inplace=True)
-    new_cols_order = ["Algorithm", "Ontology", "Sort Score", "OWA Weighted Fmax (micro)", "OWA Weighted MCC (micro)", "OWA Weighted AUPRC", "CAFA Weighted Fmax", "CAFA AUPRC", "Parameters"]
+    new_cols_order = ["Algorithm", "Ontology", "Sort Score", "OWA Score", "CWA Score", "OWA Weighted Fmax (micro)", "OWA Weighted MCC (micro)", "OWA Weighted AUPRC", "CAFA Weighted Fmax", "CAFA AUPRC", "Parameters"]
     best_param_lines_df = best_param_lines_df[new_cols_order]
     best_param_lines_df.to_csv(f"{test_dir}/best_results.tsv", sep="\t", index=False)
+
+    simple_df = best_param_lines_df[['Algorithm', 'Ontology', 'OWA Score', 'CWA Score', 'Parameters']]
+    simple_df.to_csv(f"{test_dir}/best_results_simple.tsv", sep="\t", index=False)
     
         
     

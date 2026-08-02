@@ -134,10 +134,6 @@ GENE_NAMES = {
 
 
 def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
-    if try_more:
-        random.seed(42)
-        np.random.seed(42)
-
     options = []
     for genename in genenames:
         gene_vals_raw = hyperparameter_space3[genename]

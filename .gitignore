@@ -10,8 +10,11 @@ outputs/emb_tests
 outputs/old
 outputs/old2
 outputs/evidence_exploration_small_test
+outputs/evidence_exploration_npad
+sinc_results.sh
 outputs/*.csv
 outputs/metaparameters/
 outputs/.xlsx
 *.pyc
 .*#
+up.sh

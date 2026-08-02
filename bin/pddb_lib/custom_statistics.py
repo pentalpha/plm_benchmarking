@@ -13,6 +13,34 @@ def get_ia_vector(term_list: List[str], ia_weights) -> np.ndarray:
     """
     return np.array([ia_weights.get(term) for term in term_list])
 
+def create_split_mask(
+    split_size: float, n_elements: int, random_state: int
+) -> Tuple[list, list]:
+    """
+    Creates list of indexes to split a dataset into train and test.
+
+    Args:
+        split_size (float): proportion of the dataset to be used as test set.
+        n_elements (int): total number of elements in the dataset.
+    """
+    np.random.seed(random_state)
+
+    idx = np.random.choice(n_elements, size=int(n_elements * split_size), replace=False)
+    # convert idx to python list
+    test_idx = idx.tolist()
+    train_idx = list(set(range(n_elements)) - set(test_idx))
+    return train_idx, test_idx
+
+def apply_split_mask(X: np.ndarray, train_idx: list, test_idx: list):
+    """
+    Applies split mask to X.
+
+    Args:
+        X (np.ndarray): features matrix.
+        train_idx (list): list of indexes for training set.
+        test_idx (list): list of indexes for test set.
+    """
+    return X[train_idx], X[test_idx]
 
 def ia_adapted_metric(metric_func, x, y, w_vec):
     raw_res = metric_func(x, y, average=None)
@@ -89,7 +117,6 @@ def fmax_dual(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[float, float]:
     # Retorna o F-max de ambas as avaliações
     return max(f1_fuzzy_list), max(f1_strict_list)
 
-
 def macro_fmax0(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[float, list]:
     n_thresholds = 320
     thresholds = np.linspace(0.01, 0.99, n_thresholds)
@@ -126,7 +153,6 @@ def macro_fmax0(y_true: np.ndarray, y_pred: np.ndarray) -> Tuple[float, list]:
 
     # A média do Fmax das 42 colunas
     return best_f1_per_col.mean(), list(best_f1_per_col)
-
 
 def macro_fmax(y_true, y_pred, thresholds=None):
     if thresholds is None:
@@ -169,7 +195,6 @@ def macro_fmax(y_true, y_pred, thresholds=None):
     fmax_per_col = np.max(f1, axis=0)
     return np.mean(fmax_per_col), best_f1_per_col
 
-
 def macro_fmax_dual(
     y_true: np.ndarray, y_pred: np.ndarray
 ) -> Tuple[float, float, list, list]:
@@ -178,7 +203,6 @@ def macro_fmax_dual(
     fmax_cafa_mean, fmax_cafa_all = macro_fmax(y_true_cafa, y_pred)
 
     return fmax_fuzzy_mean, fmax_cafa_mean, fmax_fuzzy_all, fmax_cafa_all
-
 
 def fmax(y_true: np.ndarray, y_pred: np.ndarray) -> float:
     n_thresholds = 32
@@ -209,38 +233,6 @@ def fmax(y_true: np.ndarray, y_pred: np.ndarray) -> float:
 
     # Return the maximum F1 score found across all tested thresholds
     return max(fmax_per_threshold)
-
-
-def create_split_mask(
-    split_size: float, n_elements: int, random_state: int
-) -> Tuple[list, list]:
-    """
-    Creates list of indexes to split a dataset into train and test.
-
-    Args:
-        split_size (float): proportion of the dataset to be used as test set.
-        n_elements (int): total number of elements in the dataset.
-    """
-    np.random.seed(random_state)
-
-    idx = np.random.choice(n_elements, size=int(n_elements * split_size), replace=False)
-    # convert idx to python list
-    test_idx = idx.tolist()
-    train_idx = list(set(range(n_elements)) - set(test_idx))
-    return train_idx, test_idx
-
-
-def apply_split_mask(X: np.ndarray, train_idx: list, test_idx: list):
-    """
-    Applies split mask to X.
-
-    Args:
-        X (np.ndarray): features matrix.
-        train_idx (list): list of indexes for training set.
-        test_idx (list): list of indexes for test set.
-    """
-    return X[train_idx], X[test_idx]
-
 
 def nan_macro_average_precision(
     y_true: np.ndarray, y_score: np.ndarray, weights=None
@@ -299,7 +291,6 @@ def nan_macro_average_precision(
 
     mean_ap_score = np.sum(ap_scores) / weights_sum
     return float(mean_ap_score)
-
 
 def faster_fmax_weighted(
     pred_scores, truth_set, weights, n_ths=120, additional_result="threshold"
@@ -599,7 +590,6 @@ def faster_fmax_weighted_nan(
     else:
         return f1, max_th
 
-
 def mcc_bycol_weighted_masked(
     pred_scores: np.ndarray,
     truth_set: np.ndarray,
@@ -679,15 +669,89 @@ def mcc_bycol_weighted_masked(
         "mcc_by_col": max_mcc_per_col.tolist(),
     }
 
+def calculate_weighted_micro_fmax(y_true: np.ndarray, y_pred: np.ndarray, n_thresholds: int = 100):
+    """
+    Builds a (n_thresholds, 4, n_cols) confusion matrix and extracts:
+    1. Standard Micro F-max
+    2. Inverse-Weighted Micro F-max (Weights applied to counts before summing)
+    """
+    thresholds = np.linspace(0.01, 0.99, n_thresholds)
+    n_cols = y_true.shape[1]
+    
+    # Create mask to ignore NaNs
+    mask = ~np.isnan(y_true)
+    
+    # Binarize targets (Strict CAFA style)
+    y_true_bin = (y_true == 1.0) 
+
+    # Initialize 3D Matrix: shape (n_thresholds, 4, n_cols)
+    # Index map: 0 = TP, 1 = TN, 2 = FP, 3 = FN
+    conf_matrix = np.zeros((n_thresholds, 4, n_cols))
+
+    for i, t in enumerate(thresholds):
+        pred_bool = y_pred > t
+        
+        # Calculate boolean overlaps, sum across rows (axis=0) to get counts per column
+        conf_matrix[i, 0, :] = (pred_bool & y_true_bin & mask).sum(axis=0)       # TP
+        conf_matrix[i, 1, :] = (~pred_bool & ~y_true_bin & mask).sum(axis=0)     # TN
+        conf_matrix[i, 2, :] = (pred_bool & ~y_true_bin & mask).sum(axis=0)      # FP
+        conf_matrix[i, 3, :] = (~pred_bool & y_true_bin & mask).sum(axis=0)      # FN
+
+    # ==========================================
+    # 1. Standard MICRO F-max (Unweighted)
+    # ==========================================
+    # Sum raw counts across all columns (axis=1)
+    tp_micro = conf_matrix[:, 0, :].sum(axis=1)
+    fp_micro = conf_matrix[:, 2, :].sum(axis=1)
+    fn_micro = conf_matrix[:, 3, :].sum(axis=1)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        prec_micro = np.where(tp_micro + fp_micro > 0, tp_micro / (tp_micro + fp_micro), 0.0)
+        rec_micro = np.where(tp_micro + fn_micro > 0, tp_micro / (tp_micro + fn_micro), 0.0)
+        f1_micro = np.where(prec_micro + rec_micro > 0, 2 * prec_micro * rec_micro / (prec_micro + rec_micro), 0.0)
+    
+    micro_fmax = f1_micro.max()
+
+    # ==========================================
+    # 2. INVERSE-WEIGHTED MICRO F-max
+    # ==========================================
+    # Calculate how many valid (non-NaN) items exist per column
+    valid_counts = mask.sum(axis=0)
+    
+    # Calculate inverse weights: 1 / Count
+    # We use np.where to safely handle columns that are 100% NaN (prevent 1/0)
+    inv_weights = np.where(valid_counts > 0, 1.0 / valid_counts, 0.0)
+    
+    # Normalize weights so they sum to 1.0
+    if inv_weights.sum() > 0:
+        inv_weights /= inv_weights.sum()
+
+    # Apply the weights directly to the counts in the confusion matrix
+    # Broadcasting: (n_thresholds, 4, n_cols) * (n_cols,) -> Multiplies along the last axis
+    weighted_conf_matrix = conf_matrix * inv_weights
+
+    # Now sum the WEIGHTED counts across columns (axis=1)
+    tp_w_micro = weighted_conf_matrix[:, 0, :].sum(axis=1)
+    fp_w_micro = weighted_conf_matrix[:, 2, :].sum(axis=1)
+    fn_w_micro = weighted_conf_matrix[:, 3, :].sum(axis=1)
+
+    with np.errstate(divide='ignore', invalid='ignore'):
+        prec_w_micro = np.where(tp_w_micro + fp_w_micro > 0, tp_w_micro / (tp_w_micro + fp_w_micro), 0.0)
+        rec_w_micro = np.where(tp_w_micro + fn_w_micro > 0, tp_w_micro / (tp_w_micro + fn_w_micro), 0.0)
+        f1_w_micro = np.where(prec_w_micro + rec_w_micro > 0, 2 * prec_w_micro * rec_w_micro / (prec_w_micro + rec_w_micro), 0.0)
+
+    inverse_weighted_micro_fmax = f1_w_micro.max()
+
+    return micro_fmax, inverse_weighted_micro_fmax
+
 
 metric_weights_for_sorting = {
-    "OWA Weighted Fmax (micro)": 1,
+    "OWA Inverse-Weighted Fmax": 1,
     "OWA Weighted MCC (micro)": 1,
     "OWA Weighted AUPRC": 1,
     "CAFA Weighted Fmax": 1,
     "CAFA AUPRC": 1,
 }
-
 
 def get_sorting_score(results: dict) -> float:
     total_score = 0
@@ -698,7 +762,6 @@ def get_sorting_score(results: dict) -> float:
     total_score = total_score / sum(metric_weights_for_sorting.values())
     return total_score
 
-
 def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2):
     n_gos = y_eval_cafa.shape[1]
     n_bottom_gos = round(n_gos * bottom_gos_perc)
@@ -706,9 +769,9 @@ def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2
     # bottom_go_indices = np.argsort(y_eval_cafa.sum(axis=0))[:n_bottom_gos]
     # bottom_go_indices = bottom_go_indices.tolist()
 
-    fmax_mean_cafa, fmax_all_cafa = macro_fmax(y_eval_cafa, y_pred)
-    bottom_fmaxes = sorted(list(fmax_all_cafa))[:n_bottom_gos]
-    fmax_bottom20percent_cafa = np.mean(bottom_fmaxes)
+    #fmax_mean_cafa, fmax_all_cafa = macro_fmax(y_eval_cafa, y_pred)
+    #bottom_fmaxes = sorted(list(fmax_all_cafa))[:n_bottom_gos]
+    #fmax_bottom20percent_cafa = np.mean(bottom_fmaxes)
 
     """fmax_mean_conditional, fmax_all_conditional = macro_fmax(y_eval_owa, y_pred)
     bottom_fmaxes = sorted(list(fmax_all_conditional))[:n_bottom_gos]
@@ -747,16 +810,20 @@ def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2
     macro_mcc = mcc_dict["macro_mcc"]
     weighted_macro_mcc = mcc_dict["weighted_macro_mcc"]
 
+    fmax_owa_micro, inverse_weighted_micro_fmax = calculate_weighted_micro_fmax(y_eval_owa, y_pred)
+
     y_stats = {
         "OWA Weighted Fmax": cafa_fmax_owa_macro,
         "OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
+        "OWA Fmax (micro)": fmax_owa_micro,
+        "OWA Inverse-Weighted Fmax": inverse_weighted_micro_fmax,
         "OWA Weighted MCC": macro_mcc,
         "OWA Weighted MCC (micro)": weighted_macro_mcc,
         "OWA Weighted AUPRC": auprc_score_owa,
         "OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
         "CAFA Weighted Fmax": cafa_fmax,
         "CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
-        "CAFA Fmax Macro": fmax_mean_cafa,
+        #"CAFA Fmax Macro": fmax_mean_cafa,
         "CAFA AUPRC": auprc_score_cafa,
     }
 
