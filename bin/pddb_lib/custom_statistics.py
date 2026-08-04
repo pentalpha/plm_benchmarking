@@ -611,7 +611,7 @@ def mcc_bycol_weighted_masked(
     valid_mask = ~np.isnan(truth_set)
 
     # 2. Verdade Binarizada e Segura
-    # (Garante que só valores validos == 1.0 serão True)
+    # (Garante que só valores não NaN e >= 0.5 serão True)
     truth_bool = np.where(valid_mask, truth_set, 0.0) >= 0.5
 
     # 3. Predições em múltiplos limiares usando Broadcasting
@@ -745,22 +745,7 @@ def calculate_weighted_micro_fmax(y_true: np.ndarray, y_pred: np.ndarray, n_thre
     return micro_fmax, inverse_weighted_micro_fmax
 
 
-metric_weights_for_sorting = {
-    "OWA Inverse-Weighted Fmax": 1,
-    "OWA Weighted MCC (micro)": 1,
-    "OWA Weighted AUPRC": 1,
-    "CAFA Weighted Fmax": 1,
-    "CAFA AUPRC": 1,
-}
 
-def get_sorting_score(results: dict) -> float:
-    total_score = 0
-    for metric_name, metric_value in results.items():
-        if metric_name not in metric_weights_for_sorting:
-            continue
-        total_score += metric_value * metric_weights_for_sorting[metric_name]
-    total_score = total_score / sum(metric_weights_for_sorting.values())
-    return total_score
 
 def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2):
     n_gos = y_eval_cafa.shape[1]
@@ -791,40 +776,71 @@ def run_statistics(y_pred, y_eval_cafa, y_eval_owa, weights, bottom_gos_perc=0.2
     cafa_fmax, other_metrics = faster_fmax_weighted(
         y_pred, y_eval_cafa, weights, additional_result="full"
     )
-    fmax_list = other_metrics["fmax_by_col"]
-    fmax_list_bottom_20 = sorted(fmax_list)[:n_bottom_gos]
-    fmax_bottom20percent_cafa = np.mean(fmax_list_bottom_20)
+    #fmax_list = other_metrics["fmax_by_col"]
+    #fmax_list_bottom_20 = sorted(fmax_list)[:n_bottom_gos]
+    #fmax_bottom20percent_cafa = np.mean(fmax_list_bottom_20)
 
-    cafa_fmax_owa_macro, other_metrics_owa_macro = faster_fmax_weighted_nan(
-        y_pred, y_eval_owa, weights, additional_result="full"
-    )
-    fmax_list2 = other_metrics_owa_macro["fmax_by_col"]
-    fmax_list2_bottom_20 = sorted(fmax_list2)[:n_bottom_gos]
-    fmax_bottom20percent_owa = np.mean(fmax_list2_bottom_20)
+    #cafa_fmax_owa_macro, other_metrics_owa_macro = faster_fmax_weighted_nan(
+    #    y_pred, y_eval_owa, weights, additional_result="full"
+    #)
+    #fmax_list2 = other_metrics_owa_macro["fmax_by_col"]
+    #fmax_list2_bottom_20 = sorted(fmax_list2)[:n_bottom_gos]
+    #fmax_bottom20percent_owa = np.mean(fmax_list2_bottom_20)
 
-    cafa_fmax_owa_micro, other_metrics_owa_micro = faster_fmax_weighted_nan(
-        y_pred, y_eval_owa, weights, additional_result="full", average="micro"
-    )
+    #cafa_fmax_owa_micro, other_metrics_owa_micro = faster_fmax_weighted_nan(
+    #    y_pred, y_eval_owa, weights, additional_result="full", average="micro"
+    #)
 
     mcc_dict = mcc_bycol_weighted_masked(y_pred, y_eval_owa, weights)
-    macro_mcc = mcc_dict["macro_mcc"]
+    mcc_cafa_dict = mcc_bycol_weighted_masked(y_pred, y_eval_cafa, weights)
+    #macro_mcc = mcc_dict["macro_mcc"]
     weighted_macro_mcc = mcc_dict["weighted_macro_mcc"]
+    #cafa_macro_mcc = mcc_cafa_dict["macro_mcc"]
+    cafa_weighted_macro_mcc = mcc_cafa_dict["weighted_macro_mcc"]
 
     fmax_owa_micro, inverse_weighted_micro_fmax = calculate_weighted_micro_fmax(y_eval_owa, y_pred)
 
     y_stats = {
-        "OWA Weighted Fmax": cafa_fmax_owa_macro,
-        "OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
-        "OWA Fmax (micro)": fmax_owa_micro,
-        "OWA Inverse-Weighted Fmax": inverse_weighted_micro_fmax,
-        "OWA Weighted MCC": macro_mcc,
-        "OWA Weighted MCC (micro)": weighted_macro_mcc,
+        #"OWA Weighted Fmax": cafa_fmax_owa_macro,
+        #"OWA Weighted Fmax (micro)": cafa_fmax_owa_micro,
+        #"OWA Fmax (micro)": fmax_owa_micro,
+        "OWA Fmax (Inverse-Weighted)": inverse_weighted_micro_fmax,
+        #"OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
+        #"OWA MCC (Macro)": macro_mcc,
+        "OWA Weighted MCC": weighted_macro_mcc,
         "OWA Weighted AUPRC": auprc_score_owa,
-        "OWA Weighted Fmax (lowest 20%)": fmax_bottom20percent_owa,
+        
         "CAFA Weighted Fmax": cafa_fmax,
-        "CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
-        #"CAFA Fmax Macro": fmax_mean_cafa,
+        #"CAFA Weighted Fmax (lowest 20%)": fmax_bottom20percent_cafa,
+        #"CAFA MCC (Macro)": cafa_macro_mcc,
+        "CAFA Weighted MCC": cafa_weighted_macro_mcc,
         "CAFA AUPRC": auprc_score_cafa,
     }
 
     return y_stats
+
+'''metric_weights_for_sorting = {
+    "OWA Inverse-Weighted Fmax": 1,
+    "OWA Weighted MCC": 1,
+    "OWA Weighted AUPRC": 1,
+    "CAFA Weighted Fmax": 1,
+    "CAFA AUPRC": 1,
+}'''
+
+metric_weights_for_sorting = {
+    "OWA Fmax (Inverse-Weighted)": 1,
+    "OWA Weighted MCC": 1,
+    "OWA Weighted AUPRC": 1,
+    "CAFA Weighted Fmax": 1,
+    "CAFA Weighted MCC": 1,
+    "CAFA AUPRC": 1,
+}
+
+def get_sorting_score(results: dict) -> float:
+    total_score = 0
+    for metric_name, metric_value in results.items():
+        if metric_name not in metric_weights_for_sorting:
+            continue
+        total_score += metric_value * metric_weights_for_sorting[metric_name]
+    total_score = total_score / sum(metric_weights_for_sorting.values())
+    return total_score

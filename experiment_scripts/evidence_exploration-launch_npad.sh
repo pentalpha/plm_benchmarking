@@ -1,38 +1,38 @@
 #!/bin/bash
-N_COMBINATIONS=5
-N_TARGETS=64
+N_COMBINATIONS=82
+N_TARGETS=32
 MIN_ANNOTATIONS=120
-MAX_TRAIN_PROTEINS=24000
+MAX_TRAIN_PROTEINS=80000
 FEATURES_DESC="input_data/emb.ankh_base.parquet:mean"
-BASE_RESULTS_DIR="outputs/evidence_exploration_npadtest"
+BASE_RESULTS_DIR="outputs/evidence_exploration_npad"
 
 # Create a directory for Slurm log files
 mkdir -p logs
 
-# ---------------------------------------------------------
-# Step 1: Run Dataset Maker (CPU) on the current node
-# ---------------------------------------------------------
-echo "Generating dataset (CPU)..."
 eval "$(conda shell.bash hook)"
 conda activate pyboost
 
-python -u bin/evidence_exploration-make_dataset.py $N_TARGETS $MIN_ANNOTATIONS
-if [ $? -ne 0 ]; then
-    echo "Error: Dataset creation failed. Aborting GPU job submissions."
-    exit 1
-fi
+# ---------------------------------------------------------
+# Step 1: Run Dataset Maker (CPU) on the current node
+# ---------------------------------------------------------
+#echo "Generating dataset (CPU)..."
+#python -u bin/evidence_exploration-make_dataset.py $N_TARGETS $MIN_ANNOTATIONS
+#if [ $? -ne 0 ]; then
+#    echo "Error: Dataset creation failed. Aborting GPU job submissions."
+#    exit 1
+#fi
 
-echo "Dataset ready! Submitting GPU jobs to Slurm..."
+#echo "Dataset ready! Submitting GPU jobs to Slurm..."
 
 # ---------------------------------------------------------
 # Step 2: Define Configurations and Submit GPU Jobs
 # ---------------------------------------------------------
 # Format: "STRATEGY USE_RNS OUT_DIR"
+#"classic False $BASE_RESULTS_DIR/classic_test"
+#"soft False $BASE_RESULTS_DIR/soft_test"
+#"conditional_negatives False $BASE_RESULTS_DIR/conditional_negatives_test"
 declare -a configs=(
     "conditional_negatives True $BASE_RESULTS_DIR/conditional_negatives_rns_test"
-    "classic False $BASE_RESULTS_DIR/classic_test"
-    "conditional_negatives False $BASE_RESULTS_DIR/conditional_negatives_test"
-    "soft False $BASE_RESULTS_DIR/soft_test"
     "soft True $BASE_RESULTS_DIR/soft_rns_test"
 )
 
@@ -43,6 +43,9 @@ for config in "${configs[@]}"; do
     
     # Create a dynamic, identifiable job name
     JOB_NAME="pb_${STRATEGY}_rns${USE_RNS}"
+
+    echo "Submitting job: $JOB_NAME | Strategy: $STRATEGY | RNS: $USE_RNS | Output Dir: $OUT_DIR"
+    echo "Template Slurm script: experiment_scripts/evidence_exploration-gpu_template.slurm"
     
     # Submit to Slurm
     sbatch --job-name="$JOB_NAME" experiment_scripts/evidence_exploration-gpu_template.slurm \
@@ -52,4 +55,4 @@ for config in "${configs[@]}"; do
     echo "Submitted -> $JOB_NAME"
 done
 
-echo "All 5 experiments have been queued successfully!"
+echo "All experiments have been queued successfully!"

@@ -20,6 +20,31 @@ def show_y_density(y):
             totals += n_val
             print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
 
+def calc_y_density(y):
+    # Calculate density of cells with 1.0, 0.0 and NaN
+    n_cells = y.shape[0] * y.shape[1]
+    # Find possible cells values in matrix
+    unique_values = np.unique(y)
+
+    print("Unique values in y:", unique_values)
+    totals = 0
+    n_by_val = {}
+    for val in unique_values:
+        if np.isnan(val):
+            n_val = n_cells - totals
+            #perc = n_val / n_cells * 100
+            print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
+        else:
+            # Make mask where 1.0 -> has x = val and 0.0 -> x != val
+            mask = np.where(y == val, 1.0, 0.0)
+            n_val = np.sum(mask)
+            totals += n_val
+            #perc = n_val / n_cells * 100
+            print("Density of", val, ":", n_val, "/", n_cells, "=", n_val / n_cells)
+        n_by_val[val] = n_val
+    n_by_val["Total with Evidence"] = totals
+    return n_by_val
+
 def add_random_false_values(train_y, target_min_zeros=0.12, zero_val=0.0):
     # x != NaN and x < 0.5 = negative evi = zero
     train_y = np.ascontiguousarray(train_y).copy()

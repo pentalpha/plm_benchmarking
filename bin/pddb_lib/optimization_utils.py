@@ -41,22 +41,31 @@ def align_predictions_and_test(y_pred, y_pred_ids, y_test_cwa, y_test_owa, y_tes
     
     return aligned_y_pred, aligned_y_test_cwa, aligned_y_test_owa, aligned_ids
 
-def run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, parents_dict, children_dict, go_sortings):
+def run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, parents_dict, children_dict, go_sortings,
+            y_tests_np = None):
     eval_metrics = {}
 
     for ont, datasets_dict in datasets_by_ont.items():
         y_pred = y_preds[ont].to_numpy()
         y_pred_ids = y_preds["id"].to_list()
-        y_test_cwa = datasets_dict['test_df']["y_"+CWA_DATASET_NAME].to_numpy()
-        y_test_owa = datasets_dict['test_df']["y_"+OWA_DATASET_NAME].to_numpy()
-        y_test_ids = datasets_dict['test_df']["id"].to_list()
-        labels = datasets_dict["targets"]
+        if y_tests_np:
+            y_test_cwa = y_tests_np[ont]["y_test_cwa"]
+            y_test_owa = y_tests_np[ont]["y_test_owa"]
+            y_test_ids = y_tests_np[ont]["y_test_ids"]
+            labels = y_tests_np[ont]["targets"]
+        else:
+            y_test_cwa = datasets_dict['test_df']["y_"+CWA_DATASET_NAME].to_numpy()
+            y_test_owa = datasets_dict['test_df']["y_"+OWA_DATASET_NAME].to_numpy()
+            y_test_ids = datasets_dict['test_df']["id"].to_list()
+            labels = datasets_dict["targets"]
         weights = np.array([go_ia_dict.get(t, 0) for t in labels])
 
-        y_pred, y_test_cwa, y_test_owa, aligned_ids = align_predictions_and_test(
-            y_pred, y_pred_ids, y_test_cwa, y_test_owa, y_test_ids
-        )
-        if y_pred is None:
+        all_equal_ids = set(y_pred_ids) == set(y_test_ids)
+
+        #y_pred, y_test_cwa, y_test_owa, aligned_ids = align_predictions_and_test(
+        #    y_pred, y_pred_ids, y_test_cwa, y_test_owa, y_test_ids
+        #)
+        if not all_equal_ids:
             return None
         
         y_pred_norm = calc_normalized_y_pred(

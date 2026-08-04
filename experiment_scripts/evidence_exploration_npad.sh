@@ -7,7 +7,7 @@
 #SBATCH --job-name=pb_optimize_test
 module load compilers/nvidia/cuda/12.6
 
-N_COMBINATIONS=32
+N_COMBINATIONS=50
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000

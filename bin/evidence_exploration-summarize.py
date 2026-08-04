@@ -66,7 +66,7 @@ if __name__ == "__main__":
             print("Results not found for", alg_name)
     
     results_df = pd.DataFrame(result_lines)
-    results_df["OWA Score"] = (results_df["OWA Weighted Fmax (micro)"] + results_df["OWA Weighted MCC (micro)"] + results_df["OWA Weighted AUPRC"])/3
+    results_df["OWA Score"] = (results_df["OWA Weighted Fmax (micro)"] + results_df["OWA Weighted MCC"] + results_df["OWA Weighted AUPRC"])/3
     results_df["CWA Score"] = (results_df["CAFA Weighted Fmax"] + results_df["CAFA AUPRC"])/2
     results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
 
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     
     best_param_lines_df = pd.DataFrame(best_param_lines)
     best_param_lines_df.sort_values(by=['Sort Score'], ascending=False, inplace=True)
-    new_cols_order = ["Algorithm", "Ontology", "Sort Score", "OWA Score", "CWA Score", "OWA Weighted Fmax (micro)", "OWA Weighted MCC (micro)", "OWA Weighted AUPRC", "CAFA Weighted Fmax", "CAFA AUPRC", "Parameters"]
+    new_cols_order = ["Algorithm", "Ontology", "Sort Score", "OWA Score", "CWA Score", "OWA Weighted Fmax (micro)", "OWA Weighted MCC", "OWA Weighted AUPRC", "CAFA Weighted Fmax", "CAFA AUPRC", "Parameters"]
     best_param_lines_df = best_param_lines_df[new_cols_order]
     best_param_lines_df.to_csv(f"{test_dir}/best_results.tsv", sep="\t", index=False)
 

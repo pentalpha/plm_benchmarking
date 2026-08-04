@@ -245,7 +245,7 @@ def save_stats_json_safe(statistics_path: str, stats, ont: str):
 
     owa_metrics = [
         "OWA Weighted Fmax (micro)",
-        "OWA Weighted MCC (micro)",
+        "OWA Weighted MCC",
         "OWA Weighted AUPRC",
     ]
     cwa_metrics = ["CAFA Weighted Fmax", "CAFA AUPRC"]

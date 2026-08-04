@@ -33,8 +33,8 @@ eval_metrics = {
 """
 "OWA Weighted Fmax"
 "OWA Weighted Fmax (micro)"
+"OWA MCC (Macro)"
 "OWA Weighted MCC"
-"OWA Weighted MCC (micro)"
 "OWA Weighted AUPRC"
 "OWA Weighted Fmax (lowest 20%)"
 "Fmax (lowest 20%)"
@@ -191,7 +191,7 @@ def calc_metrics(stats_path: str, model_results: dict, ont: str):
             stats_pretty["Sort Score"],
             stats_pretty["CAFA Weighted Fmax"],
             stats_pretty["OWA Weighted Fmax"],
-            stats_pretty["OWA Weighted MCC"],
+            stats_pretty["OWA MCC (Macro)"],
             stats_pretty["CAFA AUPRC"],
             stats_pretty["OWA Weighted AUPRC"],
         )
@@ -262,7 +262,7 @@ def save_model_results_csv(model_results, output_path):
         "Ontology",
         "Sort Score",
         "OWA Weighted Fmax (micro)",
-        "OWA Weighted MCC (micro)",
+        "OWA Weighted MCC",
         "OWA Weighted AUPRC",
         "CAFA Weighted Fmax",
         "CAFA AUPRC",
