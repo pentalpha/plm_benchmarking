@@ -1,3 +1,5 @@
+outputs/pooling_exploration/*
+outputs/pooling_exploration
 input_data/*.parquet
 input_data/*.obo
 input_data/*.tsv

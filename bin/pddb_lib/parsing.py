@@ -53,7 +53,7 @@ def load_data(targets_path: str, feature_descs, ids_subset: set=None):
 
     return df
 
-def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None, 
+def load_data_optimized0(targets_path: str, feature_descs: list, ids_subset: set = None, 
         y_to_use: list = None) -> pl.DataFrame:
     # 1. Initialize the base LazyFrame
     if y_to_use != None:
@@ -115,6 +115,76 @@ def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set 
     print(new_df)
 
     # Return as a new Polars DataFrame
+    return new_df
+
+def load_data_optimized(targets_path: str, feature_descs: list, ids_subset: set = None, 
+        y_to_use: list = None) -> pl.DataFrame:
+    # 1. Initialize the base LazyFrame
+    if y_to_use != None:
+        #Load only the specified columns
+        base_lf = pl.scan_parquet(targets_path).select(["id"] + y_to_use)
+    else:
+        #Load all y columns
+        base_lf = pl.scan_parquet(targets_path)
+    
+    # Filter targets immediately if a subset is provided to minimize memory usage
+    if ids_subset is not None:
+        base_lf = base_lf.filter(pl.col("id").is_in(list(ids_subset)))
+
+    y_cols = [c for c in base_lf.collect_schema().names() if "y_" in c or c == "y"]
+    all_feature_cols = []
+
+    # 2. Iteratively Inner Join feature datasets
+    for fdesc_raw in feature_descs:
+        parquet_path = fdesc_raw.split(':')[0]
+        col_names = fdesc_raw.split(':')[1].split(',')
+        
+        # Select only 'id' and the necessary features
+        feat_lf = pl.scan_parquet(parquet_path).select(["id"] + col_names)
+        
+        # Inner join automatically handles matching
+        base_lf = base_lf.join(feat_lf, on="id", how="inner")
+        all_feature_cols.extend(col_names)
+
+    # --- NEW: FILTER MISSING/INVALID VALUES ---
+    # Drop rows that have nulls in any of our necessary feature or target columns.
+    # Because this is lazy, Polars drops these rows as it streams from disk, saving RAM.
+    base_lf = base_lf.drop_nulls(subset=all_feature_cols + y_cols)
+
+    # 3. Trigger the Polars execution graph once
+    df = base_lf.collect()
+
+    # Safety catch if the intersection results in zero valid sequences
+    if df.height == 0:
+        raise ValueError("After filtering invalid/missing features, the dataset is empty. Check your incomplete parquet!")
+
+    print(f"Loaded {df.height} completely valid sequences out of requested.")
+
+    # 4. Extract target arrays
+    df_dict = {
+        "id": df["id"].to_list()
+    }
+    for col_name in y_cols:
+        df_dict[col_name] = df[col_name].to_numpy()
+
+    # 5. Extract and concatenate X features via vectorized NumPy
+    x_arrays = []
+    for col in all_feature_cols:
+        series = df[col]
+        # Handle embedding/array columns natively
+        if isinstance(series.dtype, (pl.List, pl.Array)):
+            # stack(to_list()) is the fastest way to get a 2D numpy matrix from list columns
+            arr = np.stack(series.to_list()) 
+        else:
+            # Handle scalar columns by reshaping them to (N, 1) for horizontal concatenation
+            arr = series.to_numpy().reshape(-1, 1)
+        x_arrays.append(arr)
+    
+    # Concatenate all matrices horizontally
+    df_dict["X"] = list(np.concatenate(x_arrays, axis=1))
+    new_df = pl.DataFrame(df_dict)
+    print(new_df)
+    
     return new_df
 
 def smart_str_parsing(val: str):

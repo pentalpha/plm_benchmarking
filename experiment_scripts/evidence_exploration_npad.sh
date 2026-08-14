@@ -3,11 +3,11 @@
 #SBATCH --gpus-per-node=1     
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=20G    
-#SBATCH --time=12:00:00         
+#SBATCH --time=16:00:00         
 #SBATCH --job-name=pb_optimize_test
 module load compilers/nvidia/cuda/12.6
 
-N_COMBINATIONS=50
+N_COMBINATIONS=72
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
@@ -36,24 +36,21 @@ nvcc --version
 echo "==================================================="
 
 #Launch for classic
-python bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
+python -u bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
     classic False $BASE_RESULTS_DIR/classic_test $N_COMBINATIONS "$FEATURES_DESC"
 
-##Conditional Negatives (y_conditional_negatives)
-python bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
-    conditional_negatives False $BASE_RESULTS_DIR/conditional_negatives_test $N_COMBINATIONS "$FEATURES_DESC"
-
-#Soft Labeling + RNS (y_soft and USE_RANDOM_NEGATIVE_SAMPLING=True)
-python bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
-    soft True $BASE_RESULTS_DIR/soft_rns_test $N_COMBINATIONS "$FEATURES_DESC"
-
 #Soft Labeling (y_soft)
-python bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
+python -u bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
     soft False $BASE_RESULTS_DIR/soft_test $N_COMBINATIONS "$FEATURES_DESC"
+
+##Conditional Negatives (y_conditional_negatives)
+python -u bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
+    conditional_negatives False $BASE_RESULTS_DIR/conditional_negatives_test $N_COMBINATIONS "$FEATURES_DESC"
 
 #Conditional Negatives + RNS (y_conditional_negatives and USE_RANDOM_NEGATIVE_SAMPLING=True)
 python -u bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
     conditional_negatives True $BASE_RESULTS_DIR/conditional_negatives_rns_test $N_COMBINATIONS "$FEATURES_DESC"
 
-
-
+#Soft Labeling + RNS (y_soft and USE_RANDOM_NEGATIVE_SAMPLING=True)
+python -u bin/evidence_exploration-optimize.py $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
+    soft True $BASE_RESULTS_DIR/soft_rns_test $N_COMBINATIONS "$FEATURES_DESC"
