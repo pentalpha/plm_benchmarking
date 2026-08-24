@@ -20,3 +20,4 @@ outputs/.xlsx
 *.pyc
 .*#
 up.sh
+outputs/plm_benchmarking/*
