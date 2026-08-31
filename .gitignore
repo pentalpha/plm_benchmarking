@@ -21,3 +21,4 @@ outputs/.xlsx
 .*#
 up.sh
 outputs/plm_benchmarking/*
+outputs/remote_results/*

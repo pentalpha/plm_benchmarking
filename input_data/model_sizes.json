@@ -1,0 +1,15 @@
+{
+    "ElnaggarLab/ankh-base": 736.674816,
+    "ElnaggarLab/ankh-large": 1879.14752,
+    "ElnaggarLab/ankh2-ext2": 1879.14752,
+    "ElnaggarLab/ankh3-large": 1879.835648,
+    "Profluent-Bio/E1-150m": 154.42333,
+    "Profluent-Bio/E1-300m": 274.317346,
+    "Profluent-Bio/E1-600m": 641.438754,
+    "facebook/esm2_t30_150M_UR50D": 148.7983,
+    "facebook/esm2_t33_650M_UR50D": 652.358616,
+    "facebook/esm2_t36_3B_UR50D": 2839.091266,
+    "biohub/ESMC-300M-hf": 332.997184,
+    "biohub/ESMC-600M-hf": 575.036992,
+    "flair-bio/amplify-350m": 354.018272
+}
