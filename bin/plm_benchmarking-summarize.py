@@ -42,9 +42,9 @@ def model_family(model_name: str):
     elif "e1" in model_name.lower():
         return "e1"
     elif "esm2" in model_name:
-        return "esm2"
+        return "esm"
     elif "esmc" in model_name:
-        return "esmc"
+        return "esm"
     elif "amplify" in model_name:
         return "amplify"
     else:
@@ -163,27 +163,38 @@ if __name__ == "__main__":
     benchmarking_dir = sys.argv[1]
 
     model_sizes = json.load(open("input_data/model_sizes.json"))
-    results_files = glob(os.path.join(benchmarking_dir, "*", "all_results.tsv"))
+    results_files = glob(os.path.join(benchmarking_dir, "*", "results_eval.json"))
+    results_files += glob(os.path.join(benchmarking_dir, "*", "model_*", "results_eval.json"))
     
     lines = []
     for results_file in results_files:
-        df = pd.read_csv(results_file, sep="\t")
-        dirname = os.path.basename(os.path.dirname(results_file))
-        df["model_name"] = dirname
-        original_name = model_original_names[dirname]
-        df["original_name"] = original_name
-        df["size_millions"] = model_sizes[original_name]
-        df["model_family"] = model_family(original_name)
-        df["pretty_name"] = pretty_names(dirname)
-        lines.append(df)
+        row = json.load(open(results_file))
+        model_dir = os.path.basename(os.path.dirname(results_file))
+        if "model_" in model_dir:
+            model_dir = os.path.basename(os.path.dirname(os.path.dirname(results_file)))
+        row["model_name"] = model_dir
+        original_name = model_original_names[model_dir]
+        row["original_name"] = original_name
+        row["size_millions"] = model_sizes[original_name]
+        row["model_family"] = model_family(original_name)
+        row["pretty_name"] = pretty_names(model_dir)
+        lines.append(row)
+
     
-    df = pd.concat(lines)
+    df = pd.DataFrame(lines)
     df["Overall Score"] = df[["BP - Sort Score", "MF - Sort Score",
         "CC - Sort Score", "DEEPLOC - Sort Score"]].mean(axis=1)*100
-    
-    df = df.sort_values(by="Overall Score", ascending=False)
-    df.to_csv(f"{benchmarking_dir}/results.tsv", sep="\t", index=False)
-    pareto_frontier_plot(df, f"{benchmarking_dir}/pareto_frontier.png")
+
+    #Get best Overall Score by model_name
+    df_best = []
+    for model_name, group_df in df.groupby("model_name"):
+        best_row = group_df.loc[group_df["Overall Score"].idxmax()]
+        df_best.append(best_row)
+
+    df_best = pd.DataFrame(df_best)
+    df_best = df_best.sort_values(by="Overall Score", ascending=False)
+    df_best.to_csv(f"{benchmarking_dir}/results.tsv", sep="\t", index=False)
+    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier.png")
         
         
         

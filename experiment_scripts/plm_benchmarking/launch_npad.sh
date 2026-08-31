@@ -1,5 +1,5 @@
 #!/bin/bash
-N_COMBINATIONS=64
+N_COMBINATIONS=8
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
@@ -51,7 +51,7 @@ for config in "${configs[@]}"; do
     # Submit to Slurm
     sbatch --job-name="$JOB_NAME" $TEMPLATE_PATH \
         $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
-        $PARQUET_PREFIX $OUT_DIR 6
+        $PARQUET_PREFIX $OUT_DIR $N_COMBINATIONS
         
     echo "Submitted -> $JOB_NAME"
 done
