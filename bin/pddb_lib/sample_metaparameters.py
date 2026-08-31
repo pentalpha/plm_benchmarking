@@ -10,10 +10,10 @@ good_combinations = {}
 
 hyperparameter_space = {
     # Estrutura da Árvore
-    "max_depth": [3, 4, 6, 8, 10, 11, 12],
-    "min_data_in_leaf": [1, 2, 3, 5, 10, 20, 35, 50, 100],
-    "min_gain_to_split": [0.0, 0.1, 0.5, 1.0, 2.0, 3.0, 5.0, 10.0, 20.0],
-    "max_bin": [64, 128, 192, 255],
+    "max_depth": [4,5,6,7,8,9],
+    "min_data_in_leaf": [1, 3, 5, 10, 20, 50],
+    "min_gain_to_split": [0.1, 0.25, 0.5, 1.0, 2.0, 4.0],
+    "max_bin": [128, 255],
     # Regularização e Otimização
     "lr": [
         0.1,
@@ -24,15 +24,23 @@ hyperparameter_space = {
         0.0075,
         0.005,
     ],
-    "lambda_l2": [0.1, 1, 5, 10, 50, 100],
-    "use_hess": [True, False],
-    "gd_steps": [1, 2, 3],
+    "lambda_l2": [0.5, 1, 25, 50, 100],
+    #"use_hess": [True],
+    "gd_steps": [1, 2],
     # Amostragem (Controle de Overfitting)
-    "colsample": [0.03, 0.05, 0.1, 0.2, 0.3, 0.4, 0.6, 0.8],
-    "subsample": [0.5, 0.6, 0.7, 0.8, 0.9, 1.0],
+    "colsample": [0.05, 0.1, 0.3, 0.4, 0.6],
+    "subsample": [0.6, 0.75, 0.9,],
     # Controle de Treinamento
-    "ntrees": [3000, 4500, 6000, 8000, 10000, 12500, 15000, 17500, 20000, 22500, 25000],
-    "es": [100, 200, 300],
+    "ntrees": [5000, 6000, 8000, 12000, 16000, 22500, 26000],
+    "es": [100, 150, 200, 300],
+    "phylo": {"min": 0.9, "max": 0.99},
+    "curated": {"min": 0.8, "max": 0.99},
+    "conditional_not": {"min": 0.3, "max": 0.4},
+    "curated_not": {"min": 0.01, "max": 0.35},
+    "derived_not": {"min": 0.03, "max": 0.12},
+    "phylo_not": {"min": 0.01, "max": 0.2},
+    "Random Falses Min Perc": {"min": 0.1, "max": 0.35},
+    "Random False Val": {"min": 0.23, "max": 0.25},
 }
 
 hyperparameter_space2 = {
@@ -60,37 +68,6 @@ hyperparameter_space2 = {
     # Controle de Treinamento
     "ntrees": [3000, 4500, 6000, 8000, 10000],
     "es": [100, 200, 300],
-}
-
-hyperparameter_space3 = {
-    # Estrutura da Árvore
-    "max_depth": [5,6,7,8],
-    "min_data_in_leaf": [1, 3, 5, 10, 20, 50],
-    "min_gain_to_split": [0.1, 0.5, 1.0, 2.0],
-    "max_bin": [128, 255],
-    # Regularização e Otimização
-    "lr": [
-        0.03,
-        0.01,
-        0.005,
-    ],
-    "lambda_l2": [1, 50, 100],
-    #"use_hess": [True],
-    "gd_steps": [1, 2],
-    # Amostragem (Controle de Overfitting)
-    "colsample": [0.05, 0.3, 0.4],
-    "subsample": [0.6, 0.75, 0.9,],
-    # Controle de Treinamento
-    "ntrees": [5000, 6000, 12000, 22500],
-    "es": [150, 200],
-    "phylo": {"min": 0.9, "max": 0.99},
-    "curated": {"min": 0.8, "max": 0.99},
-    "conditional_not": {"min": 0.3, "max": 0.4},
-    "curated_not": {"min": 0.01, "max": 0.35},
-    "derived_not": {"min": 0.03, "max": 0.12},
-    "phylo_not": {"min": 0.01, "max": 0.2},
-    "Random Falses Min Perc": {"min": 0.1, "max": 0.35},
-    "Random False Val": {"min": 0.23, "max": 0.25},
 }
 
 gdbt_params_list = [
@@ -136,7 +113,7 @@ GENE_NAMES = {
 def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
     options = []
     for genename in genenames:
-        gene_vals_raw = hyperparameter_space3[genename]
+        gene_vals_raw = hyperparameter_space[genename]
         if type(gene_vals_raw) == dict:
             min_val = gene_vals_raw["min"]
             max_val = gene_vals_raw["max"]

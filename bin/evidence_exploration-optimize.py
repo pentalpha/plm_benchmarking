@@ -100,7 +100,7 @@ if __name__ == "__main__":
     #Generate parameters options
     
     genenames = GENE_NAMES[alg_name]
-    param_options = generate_for_genelist(n_combinations, genenames, try_more=True) #TODO: find already existing combinations and only make more when needed
+    param_options = generate_for_genelist(n_combinations, genenames, try_more=True)
     
     existing_param_combs = glob(f"{test_dir}/parameters=*/")
     existing_param_combs = [

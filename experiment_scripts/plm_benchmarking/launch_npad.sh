@@ -9,6 +9,8 @@ TEMPLATE_PATH="experiment_scripts/plm_benchmarking/gpu_template.slurm"
 # Create a directory for Slurm log files
 mkdir -p logs
 
+conda run -n pyboost python -u bin/plm_benchmarking-prepare.py $N_COMBINATIONS
+
 # ---------------------------------------------------------
 # Define MODELS and Submit GPU Jobs
 # ---------------------------------------------------------
@@ -32,11 +34,11 @@ for config in "${configs[@]}"; do
     JOB_NAME="pb_${MODEL_NAME}"
     PARQUET_PREFIX="$EMBS_DIR/emb.$MODEL_NAME"
     OUT_DIR="$BASE_RESULTS_DIR/$MODEL_NAME"
-    RESULT_JSON_PATH="$OUT_DIR/results_eval.json"
+    RESULT_TSV_PATH="$OUT_DIR/optimized_results.tsv"
 
     #Submit only if the result file doesn't exist
-    if [ -f "$RESULT_JSON_PATH" ]; then
-        echo "Result file already exists: $RESULT_JSON_PATH. Skipping job submission."
+    if [ -f "$RESULT_TSV_PATH" ]; then
+        echo "Result file already exists: $RESULT_TSV_PATH. Skipping job submission."
         continue
     fi
 
@@ -49,7 +51,7 @@ for config in "${configs[@]}"; do
     # Submit to Slurm
     sbatch --job-name="$JOB_NAME" $TEMPLATE_PATH \
         $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
-        $PARQUET_PREFIX $OUT_DIR $N_COMBINATIONS
+        $PARQUET_PREFIX $OUT_DIR 6
         
     echo "Submitted -> $JOB_NAME"
 done

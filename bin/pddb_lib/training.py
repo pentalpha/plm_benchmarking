@@ -1,6 +1,13 @@
 from copy import copy
 from random import sample
-from py_boost import Callback
+
+try:
+    from py_boost import Callback
+except ImportError as err:
+    print(err)
+    print("No CUDA device available, canceling training")
+    quit(1)
+
 from py_boost.gpu.losses import BCELoss, BCEMetric
 from py_boost import GradientBoosting
 from py_boost.multioutput.sketching import RandomSamplingSketch

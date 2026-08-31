@@ -25,6 +25,12 @@ if __name__ == "__main__":
     max_train_proteins = int(sys.argv[3]) #downsampling after loading
     test_dir = sys.argv[4]
     embs_parquet_prefix = sys.argv[5]
+    n_combinations = int(sys.argv[6])
+
+    benchmarking_dir = os.path.dirname(test_dir)
+    param_options_json_path = os.path.join(benchmarking_dir, "parameter_options.json")
+    parameter_options = json.load(open(param_options_json_path, 'r'))
+
     outputs_dir = "outputs"
     params_path = "outputs/evi_exploration_results.json"
     y_dataset_name = "soft" #Evidence rep. strategy
@@ -117,85 +123,105 @@ if __name__ == "__main__":
 
     assert os.path.exists(test_dir)
 
-    test_preds_path = os.path.join(test_dir, "y_pred.parquet")
-    test_preds_basepath = os.path.join(test_dir, "y_pred")
-    y_preds = {}
-    eval_metrics = {}
-    for ont in ["deeploc", "mf", "cc", "bp"]:
-        dataset_dict = datasets_by_ont[ont]
-        targets = dataset_dict["targets"]
-        params_dict = params_dicts[ont.upper()]
-        print(f"training on {ont} ontology")
-        train_df = dataset_dict["train_df"]
-        y_name = "y_"+y_dataset_name
-        if ont == 'deeploc':
-            y_name = 'y'
-        train_x = train_df["X"].to_numpy()
-        train_y = train_df[y_name].to_numpy()
+    models_trained = []
+
+    for config_i in range(len(parameter_options)):
+        model_dir = os.path.join(test_dir, f"model_{config_i}")
+        if not os.path.exists(model_dir):
+            os.makedirs(model_dir)
+        metaparameters = parameter_options[config_i]
+        test_preds_basepath = os.path.join(model_dir, "y_pred")
+        test_preds_paths = {ont: test_preds_basepath + "." + ont + ".parquet" 
+                            for ont in ["deeploc", "mf", "cc", "bp"]}
+        y_preds = {}
+        eval_metrics = {}
+        for ont in ["deeploc", "mf", "cc", "bp"]:
+            test_preds_path = test_preds_paths[ont]
+            dataset_dict = datasets_by_ont[ont]
+            targets = dataset_dict["targets"]
+            params_dict = params_dicts[ont.upper()]
+            print(f"training on {ont} ontology")
+            train_df = dataset_dict["train_df"]
+            y_name = "y_"+y_dataset_name
+            if ont == 'deeploc':
+                y_name = 'y'
+            train_x = train_df["X"].to_numpy()
+            train_y = train_df[y_name].to_numpy()
+            
+            test_df = dataset_dict["test_df"]
+            test_x = test_df["X"].to_numpy()
+            test_y = test_df[y_name].to_numpy()
+            test_ids = test_df["id"].to_list()
+
+            if use_soft_labeling and ont != 'deeploc':
+                train_y = update_y_data_with_new_values(
+                    train_y, params_dict
+                )
+                test_y = update_y_data_with_new_values(
+                    test_y, params_dict
+                )
+            
+            train_x = np.ascontiguousarray(train_x, dtype=np.float32).copy()
+            train_y = np.ascontiguousarray(train_y, dtype=np.float32).copy()
+            test_x = np.ascontiguousarray(test_x, dtype=np.float32).copy()
+            test_y = np.ascontiguousarray(test_y, dtype=np.float32).copy()
+
+            #Make sure seed is always 1337
+            np.random.seed(1337)
+            random.seed(1337)
+
+            if ont != 'deeploc':
+                train_x, train_y = reduce_train_negatives_to(train_x, train_y, target_ratio=0.15, 
+                                                        use_nan=uses_nan)
+            
+            if use_random_negative_sampling and ont != 'deeploc':
+                zero_val = 0.0
+                if "Random False Val" in params_dict:
+                    zero_val = params_dict["Random False Val"]
+                minperc = params_dict["Random Falses Min Perc"]*100
+                print(f"Adding {minperc}% RNS with value {zero_val}")
+                show_y_density(train_y)
+                train_y, added_nots = add_random_false_values(train_y, 
+                    target_min_zeros = params_dict["Random Falses Min Perc"], zero_val=zero_val)
+                already_had_not_perc = not added_nots
+                print(f"Already had {minperc}% nots? {already_had_not_perc}")
+                show_y_density(train_y)
+
+            else:
+                already_had_not_perc = None
+            
+            if os.path.exists(test_preds_path):
+                print(f"Test predictions for {ont} already exist. Skipping training.")
+                y_preds_ont = pl.read_parquet(test_preds_path)
+                
+            else:
+                try:
+                    y_pred = train_and_pred(train_x, train_y, test_x, test_y, 
+                        metaparameters, uses_nan)
+                    #if already_had_not_perc:
+                    #    y_preds[ont+" - exception"] = f"Nots already >= {minperc}%"
+                    y_preds_ont = pl.DataFrame({"id": test_ids, ont: y_pred})
+                    y_preds_ont.write_parquet(test_preds_path)
+                except Exception as e:
+                    print(f"Error training on {ont}: {e}")
+                    y_preds_ont = None
+            if y_preds_ont is not None:
+                datasets_dict = {ont: datasets_by_ont[ont]}
+                new_eval_metrics = run_eval(datasets_dict, y_preds_ont, params_dict, go_ia_dict, 
+                        parents_dict, children_dict, go_sortings)
+                print(new_eval_metrics)
+                for key, val in new_eval_metrics.items():
+                    eval_metrics[key] = val
+            else:
+                print(f"Training failed. Skipping evaluation for {ont}.")
         
-        test_df = dataset_dict["test_df"]
-        test_x = test_df["X"].to_numpy()
-        test_y = test_df[y_name].to_numpy()
-        test_ids = test_df["id"].to_list()
-
-        if use_soft_labeling and ont != 'deeploc':
-            train_y = update_y_data_with_new_values(
-                train_y, params_dict
-            )
-            test_y = update_y_data_with_new_values(
-                test_y, params_dict
-            )
-        
-        train_x = np.ascontiguousarray(train_x, dtype=np.float32).copy()
-        train_y = np.ascontiguousarray(train_y, dtype=np.float32).copy()
-        test_x = np.ascontiguousarray(test_x, dtype=np.float32).copy()
-        test_y = np.ascontiguousarray(test_y, dtype=np.float32).copy()
-
-        #Make sure seed is always 1337
-        np.random.seed(1337)
-        random.seed(1337)
-
-        if ont != 'deeploc':
-            train_x, train_y = reduce_train_negatives_to(train_x, train_y, target_ratio=0.15, 
-                                                    use_nan=uses_nan)
-        
-        if use_random_negative_sampling and ont != 'deeploc':
-            zero_val = 0.0
-            if "Random False Val" in params_dict:
-                zero_val = params_dict["Random False Val"]
-            minperc = params_dict["Random Falses Min Perc"]*100
-            print(f"Adding {minperc}% RNS with value {zero_val}")
-            show_y_density(train_y)
-            train_y, added_nots = add_random_false_values(train_y, 
-                target_min_zeros = params_dict["Random Falses Min Perc"], zero_val=zero_val)
-            already_had_not_perc = not added_nots
-            print(f"Already had {minperc}% nots? {already_had_not_perc}")
-            show_y_density(train_y)
-
-        else:
-            already_had_not_perc = None
-        y_pred = train_and_pred(train_x, train_y, test_x, test_y, 
-            params_dict, uses_nan)
-        y_preds["id_"+ont] = test_ids
-        y_preds["y_"+ont] = y_pred
-        #if already_had_not_perc:
-        #    y_preds[ont+" - exception"] = f"Nots already >= {minperc}%"
-        test_preds_path = test_preds_basepath + "." + ont + ".parquet"
-        y_preds_ont = pl.DataFrame({"id": test_ids, ont: y_pred})
-        y_preds_ont.write_parquet(test_preds_path)
-        datasets_dict = {ont: datasets_by_ont[ont]}
-        new_eval_metrics = run_eval(datasets_dict, y_preds_ont, params_dict, go_ia_dict, 
-                parents_dict, children_dict, go_sortings)
-        print(new_eval_metrics)
-        for key, val in new_eval_metrics.items():
-            eval_metrics[key] = val
+        if len(eval_metrics) > 0:
+            print(eval_metrics)
+            with open(f"{model_dir}/results_eval.json", "w") as f:
+                json.dump(eval_metrics, f, indent=4)
+            models_trained.append(eval_metrics)
     
-    print(eval_metrics) 
-    with open(f"{test_dir}/results_eval.json", "w") as f:
-        json.dump(eval_metrics, f, indent=4)
-    
-    models_trained = [eval_metrics]
     #Store results
     all_results_df = pd.DataFrame(models_trained)
-    all_results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
-    print("\n\nResults stored in", f"{test_dir}/all_results.tsv") 
+    all_results_df.to_csv(f"{test_dir}/optimized_results.tsv", sep="\t", index=False)
+    print("\n\nResults stored in", f"{test_dir}/optimized_results.tsv") 
