@@ -37,6 +37,6 @@ echo "Output Directory: $OUT_DIR"
 echo "Number of Combinations: $N_COMBINATIONS"
 echo "=========================================================="
 
-python -u bin/plm_benchmarking-train.py \
+python -u bin/plm_benchmarking-optimize.py \
     $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
     $OUT_DIR $PARQUET_PREFIX $N_COMBINATIONS

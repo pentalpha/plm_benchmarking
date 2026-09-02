@@ -257,14 +257,19 @@ def train_and_pred(train_x, train_y, test_x, test_y, params_dict, has_nan):
     print("test_x: ", test_x)
     print("train_y: ", train_y)
     print("test_y: ", test_y)
-
-    model.fit(train_x, train_y, eval_sets=[{"X": test_x, "y": test_y}])
-
+    
+    try:
+        model.fit(train_x, train_y, eval_sets=[{"X": test_x, "y": test_y}])
+    except Exception as e:
+        print(f"Error with param combination {params_dict}: {e}")
+        del model
+        import gc
+        gc.collect()
+        raise e
+    
     y_pred_test = model.predict(test_x)
-
     del model
     import gc
-
     gc.collect()
 
     return y_pred_test

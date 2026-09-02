@@ -21,7 +21,9 @@ model_simple_names = {
     "facebook/esm2_t36_3B_UR50D": "esm2_3b",
     "biohub/ESMC-300M-hf": "esmc_300",
     "biohub/ESMC-600M-hf": "esmc_600",
-    "flair-bio/amplify-350m": "amplify_350"
+    "flair-bio/amplify-350m": "amplify_350",
+    "biohub/ESMC-300M-hf": "esmc_300",
+    "biohub/ESMC-600M-hf": "esmc_600"
 }
 
 model_original_names = {v: k for k, v in model_simple_names.items()}
@@ -37,15 +39,20 @@ MARKER_MAP = {
 }
 
 def model_family(model_name: str):
-    if "ankh" in model_name:
+    m_low = model_name.lower()
+    if "ankh3" in m_low:
+        return "ankh3"
+    elif "ankh2" in m_low:
+        return "ankh2"
+    elif "ankh" in m_low:
         return "ankh"
-    elif "e1" in model_name.lower():
+    elif "e1" in m_low:
         return "e1"
-    elif "esm2" in model_name:
-        return "esm"
-    elif "esmc" in model_name:
-        return "esm"
-    elif "amplify" in model_name:
+    elif "esm2" in m_low:
+        return "esm2"
+    elif "esmc" in m_low:
+        return "esmc"
+    elif "amplify" in m_low:
         return "amplify"
     else:
         print(f"Unknown model family: {model_name}")
@@ -92,71 +99,93 @@ def add_gradient_fill(ax, x, y, color, drop_height, max_alpha, zorder=1, n_steps
                         color=color, alpha=alphas[i], 
                         zorder=zorder, linewidth=0, edgecolor='none')
 
-def pareto_frontier_plot(df: pd.DataFrame, output_path: str,
+def pareto_frontier_plot(df_all: pd.DataFrame, output_path: str,
                         x_col: str = "size_millions", 
-                        y_col: str = "Overall Score",
+                        y_col: str = "Sort Score",
                         color_col: str = "model_family"):
-    fig, ax = plt.subplots(1, 1, figsize=(10, 6))
+    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
+
+    df_all[y_col] = df_all[y_col] * 100
+
+    ontology_to_coords = {
+        "MF": (0,0),
+        "CC": (0,1),
+        "BP": (1,0),
+        "DEEPLOC": (1,1)
+    }
     
     frontier_line_color = "#e74c3c"
     frontier_bg_color = "#ea9999"
     bg_color = "#FCFBF9"
     fig.patch.set_facecolor(bg_color)
-    ax.set_facecolor(bg_color)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
-    ax.set_axisbelow(True)
 
-    y_min = df[y_col].min() - (df[y_col].max() - df[y_col].min()) * 0.1
-    
-    # Set the drop height to exactly 50% of the Y-axis range so it fades out completely mid-air
-    y_range = df[y_col].max() - df[y_col].min()
-    gradient_drop = y_range * 0.50
+    global_top_y = df_all[y_col].max() + 0.01
+    global_bottom_y = df_all[y_col].min() - 0.01
+    global_y_range = global_top_y - global_bottom_y
 
-    # --- 1. Compute and Plot the Global Frontier ---
-    frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
-    
-    ax.plot(frontier_df[x_col], frontier_df[y_col]-0.0005, 
-            color=frontier_line_color, linestyle="--", linewidth=5, label="Efficiency Frontier", zorder=2)
-    
-    # EXCLUSIVELY use the gradient fill. The static flat-bottom fill_between has been deleted.
-    add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col]-0.0005, 
-                      color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
+    for ont, ax_coords in ontology_to_coords.items():
+        df = df_all[df_all["ontology"] == ont]
+        ax = axes[ax_coords[0], ax_coords[1]]
+        ax.set_facecolor(bg_color)
+        ax.spines['top'].set_visible(False)
+        ax.spines['right'].set_visible(False)
+        ax.yaxis.grid(True, linestyle='-', which='major', 
+            color='lightgrey', alpha=0.7)
+        ax.set_axisbelow(True)
 
-    # --- 2. Plot all models individually by family ---
-    groups = df.groupby(color_col)
-    
-    for name, group in groups:
-        marker = MARKER_MAP.get(name.lower(), "o")
-        group = group.sort_values(by=x_col)
+        y_min = df[y_col].min() - (df[y_col].max() - df[y_col].min()) * 0.1
         
-        line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
-                        marker=marker, markersize=9, linewidth=2, zorder=3)
+        # Set the drop height to exactly 50% of the Y-axis range so it fades out completely mid-air
+        y_range = df[y_col].max() - df[y_col].min()
+        gradient_drop = y_range * 0.50
+
+        # --- 1. Compute and Plot the Global Frontier ---
+        frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
         
-        # Add the parallel gradient for the individual lines, making it slightly shorter so it doesn't clutter
-        add_gradient_fill(ax, group[x_col], group[y_col], 
-                          color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
+        ax.plot(frontier_df[x_col], frontier_df[y_col]-0.0005, 
+                color=frontier_line_color, linestyle="--", linewidth=5,
+                 label="Efficiency Frontier", zorder=2)
         
-        for i, row in group.iterrows():
-            pos_dot = (row[x_col], row[y_col])
+        # EXCLUSIVELY use the gradient fill. The static flat-bottom fill_between has been deleted.
+        add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col]-0.0005, 
+                        color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
+
+        # --- 2. Plot all models individually by family ---
+        groups = df.groupby(color_col)
+        
+        for name, group in groups:
+            marker = MARKER_MAP.get(name.lower(), "o")
+            group = group.sort_values(by=x_col)
             
-            is_frontier = (row['model_name'] in frontier_df['model_name'].values)
-            y_offset = 12 if is_frontier else 8
+            line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
+                            marker=marker, markersize=9, linewidth=2, zorder=3)
             
-            ax.annotate(row["pretty_name"], pos_dot, 
-                        xytext=(0, y_offset), textcoords="offset points", 
-                        fontsize=9, color="#333333",
-                        ha='center', va='bottom', zorder=4,
-                        path_effects=[pe.withStroke(linewidth=3, foreground=bg_color)])
+            # Add the parallel gradient for the individual lines, making it slightly shorter so it doesn't clutter
+            add_gradient_fill(ax, group[x_col], group[y_col], 
+                            color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
+            
+            for i, row in group.iterrows():
+                pos_dot = (row[x_col], row[y_col])
+                
+                is_frontier = (row['model_name'] in frontier_df['model_name'].values)
+                y_offset = 12 if is_frontier else 8
+                
+                ax.annotate(row["pretty_name"], pos_dot, 
+                            xytext=(0, y_offset), textcoords="offset points", 
+                            fontsize=9, color="#333333",
+                            ha='center', va='bottom', zorder=4,
+                            path_effects=[pe.withStroke(linewidth=3, foreground=bg_color)])
+        if ont == "DEEPLOC":
+            ax.legend(frameon=False, loc="lower right")
+        ax.set_title(ont, pad=15, fontsize=14)
         
-    ax.legend(frameon=False, loc="lower right")
-    ax.set_xlabel("Model Size (millions of parameters)", labelpad=10, fontweight='bold', color='#444444')
-    ax.set_ylabel("Overall Score (%)", labelpad=10, fontweight='bold', color='#444444')
-    ax.set_title("Efficiency Frontier of Protein Language Models ", pad=15, fontsize=14)
-    ax.set_ylim(bottom=y_min)
+        ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
+    # Sup-labels with explicit position coordinates to push them outward
+    fig.supylabel("Overall Score (%)", fontweight='bold', color='#444444', x=0.015)
+    fig.supxlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444', y=0.02)
     
-    fig.tight_layout()
+    # Adjust layout padding so the outward-pushed labels don't get cropped
+    fig.tight_layout(rect=[0.02, 0.02, 1, 1])
     fig.savefig(output_path, dpi=400, facecolor=bg_color)
 
 if __name__ == "__main__":
@@ -171,30 +200,54 @@ if __name__ == "__main__":
         row = json.load(open(results_file))
         model_dir = os.path.basename(os.path.dirname(results_file))
         if "model_" in model_dir:
+            param_comb_id = model_dir.split("_")[-1]
             model_dir = os.path.basename(os.path.dirname(os.path.dirname(results_file)))
+        else:
+            param_comb_id = "default"
+        
         row["model_name"] = model_dir
         original_name = model_original_names[model_dir]
         row["original_name"] = original_name
         row["size_millions"] = model_sizes[original_name]
         row["model_family"] = model_family(original_name)
         row["pretty_name"] = pretty_names(model_dir)
-        lines.append(row)
+        row["param_comb_id"] = param_comb_id
+
+        ont_rows = []
+        for ont in ['DEEPLOC', "MF", "CC", "BP"]:
+            ont_row = {k.replace(f'{ont} - ', ''): v for k, v in row.items() if (not ' - ' in k) or (f'{ont} - ' in k)}
+            if "Sort Score" in ont_row:
+                ont_row['ontology'] = ont
+                ont_rows.append(ont_row)
+        lines += ont_rows
 
     
     df = pd.DataFrame(lines)
-    df["Overall Score"] = df[["BP - Sort Score", "MF - Sort Score",
-        "CC - Sort Score", "DEEPLOC - Sort Score"]].mean(axis=1)*100
+    #df["Overall Score"] = df[["BP - Sort Score", "MF - Sort Score",
+    #    "CC - Sort Score", "DEEPLOC - Sort Score"]].mean(axis=1)*100
+    df = df.sort_values(by="Sort Score", ascending=False)
 
     #Get best Overall Score by model_name
     df_best = []
-    for model_name, group_df in df.groupby("model_name"):
-        best_row = group_df.loc[group_df["Overall Score"].idxmax()]
+    for model_name, group_df in df.groupby(["model_name", "ontology"]):
+        best_row = group_df.loc[group_df["Sort Score"].idxmax()]
+        best_row = {k: v for k, v in best_row.items()}
+        best_row["N_Tests"] = len(group_df)
         df_best.append(best_row)
 
     df_best = pd.DataFrame(df_best)
-    df_best = df_best.sort_values(by="Overall Score", ascending=False)
-    df_best.to_csv(f"{benchmarking_dir}/results.tsv", sep="\t", index=False)
+    df_best = df_best.sort_values(by="Sort Score", ascending=False)
+    df_best.to_csv(f"{benchmarking_dir}/results_best.tsv", sep="\t", index=False)
+    df.to_csv(f"{benchmarking_dir}/results_all.tsv", sep="\t", index=False)
     pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier.png")
+
+    cols_simple = ["original_name", "size_millions", "model_family", "ontology", "Sort Score", 
+        "N_Tests", "param_comb_id", "parameters"]
+    cols_simple2 = ["original_name", "size_millions", "model_family", "ontology", "Sort Score", 
+        "param_comb_id", "parameters"]
+
+    df_best[cols_simple].to_csv(f"{benchmarking_dir}/results_best_simple.tsv", sep="\t", index=False)
+    df[cols_simple2].to_csv(f"{benchmarking_dir}/results_all_simple.tsv", sep="\t", index=False)
         
         
         
