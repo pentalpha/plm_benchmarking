@@ -2,8 +2,8 @@
 #SBATCH --partition=gpu-4-a100
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=10
-#SBATCH --mem=40G    
-#SBATCH --time=4:20:00          
+#SBATCH --mem=40G
+#SBATCH --time=10:00:00        
 #SBATCH --job-name=plm_bench
 #SBATCH --output=logs/%x_%j.out
 

@@ -46,6 +46,7 @@ models = [
     ["facebook/esm2_t36_3B_UR50D", "Synthyra/ESM2-3B"],
     ["biohub/ESMC-300M-hf", "biohub/ESMC-600M"],
     ["biohub/ESMC-600M-hf", "biohub/ESMC-600M"],
+    ["flair-bio/amplify-120m"],
     ["flair-bio/amplify-350m"],
 ]
 

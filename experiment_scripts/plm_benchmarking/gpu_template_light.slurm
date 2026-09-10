@@ -3,7 +3,7 @@
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=32G    
-#SBATCH --time=6:00:00          
+#SBATCH --time=10:00:00          
 #SBATCH --job-name=plm_bench
 #SBATCH --output=logs/%x_%j.out
 

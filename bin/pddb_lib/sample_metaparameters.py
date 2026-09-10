@@ -43,6 +43,34 @@ hyperparameter_space = {
     "Random False Val": {"min": 0.23, "max": 0.25},
 }
 
+hyperparameter_space1 = {
+    # Estrutura da Árvore
+    "max_depth": [4,5,6,7,8,9],
+    "min_data_in_leaf": [1, 3, 5, 10, 20, 50],
+    "min_gain_to_split": [0.1, 0.25, 0.5, 1.0, 2.0, 4.0],
+    "max_bin": [64, 96, 128, 192, 255, 255],
+    # Regularização e Otimização
+    "lr": [
+        0.1,
+        0.08,
+        0.05,
+        0.03,
+        0.01,
+        0.0075,
+        0.005,
+    ],
+    "lambda_l2": [0.5, 1, 25, 50, 75, 100, 150],
+    #"use_hess": [True],
+    "gd_steps": [1, 2],
+    # Amostragem (Controle de Overfitting)
+    "colsample": [0.025, 0.05, 0.075, 0.1, 1.5, 0.2, 0.3, 0.4, 0.6, 0.8],
+    "subsample": [0.6, 0.75, 0.9,],
+    # Controle de Treinamento
+    "ntrees": [4000, 5000, 6000, 7000, 8000, 10000, 12000, 16000, 
+        18000, 22500, 26000, 28000, 30000, 32000],
+    "es": [100, 150, 200, 300],
+}
+
 hyperparameter_space2 = {
     # Estrutura da Árvore
     "max_depth": [3, 4, 6, 8],
@@ -113,7 +141,7 @@ GENE_NAMES = {
 def generate_for_genelist(n_combinations: int, genenames: list, try_more=True):
     options = []
     for genename in genenames:
-        gene_vals_raw = hyperparameter_space[genename]
+        gene_vals_raw = hyperparameter_space1[genename]
         if type(gene_vals_raw) == dict:
             min_val = gene_vals_raw["min"]
             max_val = gene_vals_raw["max"]

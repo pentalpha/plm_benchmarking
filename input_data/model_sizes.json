@@ -11,5 +11,6 @@
     "facebook/esm2_t36_3B_UR50D": 2839.091266,
     "biohub/ESMC-300M-hf": 332.997184,
     "biohub/ESMC-600M-hf": 575.036992,
-    "flair-bio/amplify-350m": 354.018272
+    "flair-bio/amplify-350m": 354.018272,
+    "flair-bio/amplify-120m": 120
 }

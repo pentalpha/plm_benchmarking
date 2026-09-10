@@ -2,11 +2,24 @@ import json
 from glob import glob
 import sys
 import os
-
+import matplotlib.gridspec as gridspec
+import seaborn as sns
 import pandas as pd
+import matplotlib.ticker as mtick
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
 import numpy as np
+
+from pddb_lib.sample_metaparameters import gdbt_params_list
+
+metrics = [
+    ("Overall Score", ["Sort Score"]),
+    ("OWA Score", ["OWA Fmax (Inverse-Weighted)", "OWA Weighted MCC", "OWA Weighted AUPRC"]),
+    ("CWA Score", ["CAFA Weighted Fmax", "CAFA Weighted MCC", "CAFA AUPRC"]),
+    ("Fmax", ["OWA Fmax (Inverse-Weighted)", "CAFA Weighted Fmax"]),
+    ("MCC", ["OWA Weighted MCC", "CAFA Weighted MCC"]),
+    ("AUPRC", ["OWA Weighted AUPRC", "CAFA AUPRC"])
+]
 
 model_simple_names = {
     "ElnaggarLab/ankh-base": "ankh_base",
@@ -23,7 +36,28 @@ model_simple_names = {
     "biohub/ESMC-600M-hf": "esmc_600",
     "flair-bio/amplify-350m": "amplify_350",
     "biohub/ESMC-300M-hf": "esmc_300",
-    "biohub/ESMC-600M-hf": "esmc_600"
+    "biohub/ESMC-600M-hf": "esmc_600",
+    "flair-bio/amplify-120m": "amplify_120",
+    "flair-bio/amplify-350m": "amplify_350",
+}
+
+model_emb_w = {
+    "ElnaggarLab/ankh-base": 768,
+    "ElnaggarLab/ankh-large": 1536,
+    "ElnaggarLab/ankh2-ext2": 1536,
+    "ElnaggarLab/ankh3-large": 1536,
+    "Profluent-Bio/E1-150m": 768,
+    "Profluent-Bio/E1-300m": 1024,
+    "Profluent-Bio/E1-600m": 1280,
+    "facebook/esm2_t30_150M_UR50D": 640,
+    "facebook/esm2_t33_650M_UR50D": 1280,
+    "facebook/esm2_t36_3B_UR50D": None,
+    "biohub/ESMC-300M-hf": 960,
+    "biohub/ESMC-600M-hf": None,
+    "flair-bio/amplify-120m": 640,
+    "flair-bio/amplify-350m": None,
+    "biohub/ESMC-300M-hf": 960,
+    "biohub/ESMC-600M-hf": None,
 }
 
 model_original_names = {v: k for k, v in model_simple_names.items()}
@@ -119,8 +153,8 @@ def pareto_frontier_plot(df_all: pd.DataFrame, output_path: str,
     bg_color = "#FCFBF9"
     fig.patch.set_facecolor(bg_color)
 
-    global_top_y = df_all[y_col].max() + 0.01
-    global_bottom_y = df_all[y_col].min() - 0.01
+    global_top_y = df_all[y_col].max() + 1.5
+    global_bottom_y = df_all[y_col].min() - 1.5
     global_y_range = global_top_y - global_bottom_y
 
     for ont, ax_coords in ontology_to_coords.items():
@@ -188,6 +222,283 @@ def pareto_frontier_plot(df_all: pd.DataFrame, output_path: str,
     fig.tight_layout(rect=[0.02, 0.02, 1, 1])
     fig.savefig(output_path, dpi=400, facecolor=bg_color)
 
+'''def pareto_frontier_oneplot(df: pd.DataFrame,
+                        ax,
+                        x_col: str = "size_millions", 
+                        y_col: str = "Sort Score",
+                        color_col: str = "model_family",
+                        global_top_y: float = 90,
+                        global_bottom_y: float = 60,
+                        bg_color: str = "#FCFBF9"):
+    #df_all[y_col] = df_all[y_col] * 100
+
+    ontologies = ["MF", "CC", "BP", "DEEPLOC"]
+    
+    frontier_line_color = "#e74c3c"
+    frontier_bg_color = "#ea9999"
+
+    global_y_range = global_top_y - global_bottom_y
+
+    ax.set_facecolor(bg_color)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.yaxis.grid(True, linestyle='-', which='major', 
+        color='lightgrey', alpha=0.7)
+    
+    ax.set_axisbelow(True)
+
+    y_min = df[y_col].min() - (df[y_col].max() - df[y_col].min()) * 0.1
+    
+    # Set the drop height to exactly 50% of the Y-axis range so it fades out completely mid-air
+    y_range = df[y_col].max() - df[y_col].min()
+    gradient_drop = y_range * 0.50
+
+    # --- 1. Compute and Plot the Global Frontier ---
+    frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
+    
+    ax.plot(frontier_df[x_col], frontier_df[y_col]-0.0005, 
+            color=frontier_line_color, linestyle="--", linewidth=5,
+                label="Efficiency Frontier", zorder=2)
+    
+    add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col]-0.0005, 
+                    color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
+
+    # --- 2. Plot all models individually by family ---
+    groups = df.groupby(color_col)
+    
+    for name, group in groups:
+        marker = MARKER_MAP.get(name.lower(), "o")
+        group = group.sort_values(by=x_col)
+        
+        line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
+                        marker=marker, markersize=9, linewidth=2, zorder=3)
+        
+        # Add the parallel gradient for the individual lines, making it slightly shorter so it doesn't clutter
+        add_gradient_fill(ax, group[x_col], group[y_col], 
+                        color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
+        
+        for i, row in group.iterrows():
+            pos_dot = (row[x_col], row[y_col])
+            
+            is_frontier = (row['model_name'] in frontier_df['model_name'].values)
+            y_offset = 13 if is_frontier else 8
+            
+            ax.annotate(row["pretty_name"], pos_dot, 
+                        xytext=(0, y_offset), textcoords="offset points", 
+                        fontsize=9 if is_frontier else 8,
+                        color="#333333",
+                        ha='center', va='bottom', zorder=5 if is_frontier else 4,
+                        fontweight="bold" if is_frontier else "normal",
+                        alpha=0.8 if is_frontier else 0.95,
+                        path_effects=[pe.withStroke(linewidth=2, foreground=bg_color)])
+    ax.legend(frameon=False, loc="lower right")
+    #ax.set_title(ont, pad=15, fontsize=14)
+    
+    ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
+    # Sup-labels with explicit position coordinates to push them outward
+    ax.set_ylabel("Overall Score (%)", fontweight='bold', color='#444444', x=0.015)
+    ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444', y=0.02)
+    ax.set_xscale("log")
+    # Write the X label values in absolute numbers (not scientific notation)
+    ax.xaxis.set_major_formatter(mtick.FormatStrFormatter("%.0f"))
+    ax.xaxis.set_minor_formatter(mtick.FormatStrFormatter("%.0f"))
+    # Font size 8 on x and y axis minor and major values
+    ax.tick_params(axis='both', which='major',labelsize=8)
+    ax.tick_params(axis='both', which='minor',labelsize=8)
+
+    # X grid every 500 million parameters
+    ax.xaxis.grid(True, linestyle='-', which='major', 
+        color='lightgrey', alpha=0.7)
+    # X major is every 500:
+    ax.xaxis.set_major_locator(mtick.MultipleLocator(500))'''
+
+def pareto_frontier_oneplot(df: pd.DataFrame,
+                            ax: plt.Axes,
+                            x_col: str = "size_millions", 
+                            y_col: str = "Sort Score",
+                            color_col: str = "model_family",
+                            global_top_y: float = 90.0,
+                            global_bottom_y: float = 60.0,
+                            bg_color: str = "#FCFBF9"):
+    """Plots the Pareto frontier and scatter points for model performances."""
+    frontier_line_color = "#e74c3c"
+    frontier_bg_color = "#ea9999"
+
+    ax.set_facecolor(bg_color)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    ax.set_axisbelow(True)
+
+    y_range = df[y_col].max() - df[y_col].min()
+    gradient_drop = y_range * 0.50
+
+    # --- 1. Compute and Plot the Global Frontier ---
+    frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
+    
+    ax.plot(frontier_df[x_col], frontier_df[y_col] - 0.0005, 
+            color=frontier_line_color, linestyle="--", linewidth=5,
+            label="Efficiency Frontier", zorder=2)
+    
+    add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col] - 0.0005, 
+                      color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
+
+    # --- 2. Plot all models individually by family ---
+    groups = df.groupby(color_col)
+    
+    for name, group in groups:
+        marker = MARKER_MAP.get(name.lower(), "o")
+        group = group.sort_values(by=x_col)
+        
+        line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
+                        marker=marker, markersize=9, linewidth=2, zorder=3)
+        
+        add_gradient_fill(ax, group[x_col], group[y_col], 
+                          color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
+        
+        for _, row in group.iterrows():
+            pos_dot = (row[x_col], row[y_col])
+            is_frontier = (row['model_name'] in frontier_df['model_name'].values)
+            y_offset = 13 if is_frontier else 8
+            
+            ax.annotate(row["pretty_name"], pos_dot, 
+                        xytext=(0, y_offset), textcoords="offset points", 
+                        fontsize=9 if is_frontier else 8,
+                        color="#333333",
+                        ha='center', va='bottom', zorder=5 if is_frontier else 4,
+                        fontweight="bold" if is_frontier else "normal",
+                        alpha=0.8 if is_frontier else 0.95,
+                        path_effects=[pe.withStroke(linewidth=2, foreground=bg_color)])
+            
+    ax.legend(frameon=False, loc="lower right")
+    ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
+    
+    ax.set_ylabel(f"Overall Score (%)", fontweight='bold', color='#444444')
+    ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444')
+    
+    # Use ScalarFormatter on a log scale to safely show 500, 1000 instead of 10^x
+    ax.set_xscale("log")
+    formatter = mtick.ScalarFormatter()
+    formatter.set_scientific(False)
+    ax.xaxis.set_major_formatter(formatter)
+    ax.xaxis.set_minor_formatter(formatter)
+    
+    ax.tick_params(axis='both', which='major', labelsize=8)
+    ax.tick_params(axis='both', which='minor', labelsize=7)
+    ax.xaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    # ignore minors:
+    ax.xaxis.set_minor_locator(mtick.MultipleLocator(3000))
+    # X major is every 500:
+    ax.xaxis.set_major_locator(mtick.MultipleLocator(400))
+
+
+def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sort Score"):
+    """Generates a stylized heatmap matching the aesthetics of standard PLM benchmark papers."""
+    # 1. Create a pivot table calculating the mean score for each model and ontology
+    pivot_df = df_all.pivot_table(index="pretty_name", columns="ontology", values=y_col, aggfunc="mean")
+    
+    # Extract model metadata (size and embed width)
+    meta_df = df_all[['pretty_name', 'embed_width', 'size_millions']].drop_duplicates().set_index('pretty_name')
+    
+    # Merge metadata into pivot table and rename for display
+    pivot_df = pivot_df.join(meta_df)
+    pivot_df = pivot_df.rename(columns={
+        'embed_width': 'Embedding\nWidth',
+        'size_millions': 'Million\nParameters'
+    })
+    
+    # 2. Enforce the exact column order requested
+    cols = ["Embedding\nWidth", "Million\nParameters", "MF", "CC", "BP", "DEEPLOC"]
+    existing_cols = [c for c in cols if c in pivot_df.columns]
+    pivot_df = pivot_df[existing_cols]
+    
+    # 3. Sort models by their average performance on the metrics (excluding meta columns)
+    metric_cols = [c for c in ["MF", "CC", "BP", "DEEPLOC"] if c in pivot_df.columns]
+    pivot_df["Average"] = pivot_df[metric_cols].mean(axis=1)
+    pivot_df = pivot_df.sort_values(by="Average", ascending=False)
+    pivot_df = pivot_df.drop(columns=["Average"]) 
+    
+    # --- NEW: Inject empty rows to leave space for future models ---
+    future_rows = pd.DataFrame(np.nan, index=["Future Model A", "Future Model B"], columns=pivot_df.columns)
+    pivot_df = pd.concat([pivot_df, future_rows])
+    
+    # 4. Normalize data per-column (0 to 1) so each column has its own color scale
+    # NaNs will be ignored during min/max calculation and remain NaNs
+    normalized_df = (pivot_df - pivot_df.min()) / (pivot_df.max() - pivot_df.min())
+
+    # For ["Embedding\nWidth", "Million\nParameters"], less is better. So we should invert these values
+    normalized_df[["Embedding\nWidth", "Million\nParameters"]] = 1 - normalized_df[["Embedding\nWidth", "Million\nParameters"]]
+    
+    # Build a custom annotation array handling the empty future rows gracefully
+    annot_array = []
+    for _, row in pivot_df.iterrows():
+        row_annots = []
+        for col in pivot_df.columns:
+            val = row[col]
+            if pd.isna(val):
+                row_annots.append("") # Leave cell blank if NaN
+            elif col in ["Embedding\nWidth", "Million\nParameters"]:
+                row_annots.append(f"{val:.0f}") # No decimals for size/width
+            else:
+                row_annots.append(f"{val:.1f}") # 1 decimal for scores
+        annot_array.append(row_annots)
+    
+    # 5. Plot the stylized heatmap 
+    sns.heatmap(normalized_df, 
+                annot=annot_array,       
+                fmt="",                  
+                cmap="viridis",          
+                linewidths=3,            
+                linecolor='white',       
+                square=False,            
+                cbar=False,              
+                ax=ax)
+    
+    # 6. Format the axes
+    ax.set_ylabel("") 
+    ax.set_xlabel("")
+    
+    ax.xaxis.tick_top()
+    ax.tick_params(axis='x', rotation=0, labelsize=9.5, labelcolor='black', length=0)
+    
+    # --- NEW: Reduced font size to 9.5 and increased padding to 12 to prevent overlap ---
+    ax.tick_params(axis='y', rotation=0, labelsize=9.5, labelcolor='black', length=0, pad=12)
+
+
+def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
+                                 x_col: str = "size_millions", 
+                                 y_col: str = "Sort Score",
+                                 color_col: str = "model_family"):
+    """Main wrapper function to generate a 1x2 figure with scatter and heatmap."""
+    bg_color = "#FCFBF9"
+    
+    # 1. Setup Figure and GridSpec
+    fig = plt.figure(figsize=(16, 7))
+    fig.patch.set_facecolor(bg_color)
+    
+    # --- NEW: Increased wspace from 0.15 to 0.28 to push the heatmap further right ---
+    gs = gridspec.GridSpec(1, 2, width_ratios=[1.3, 1], wspace=0.28)
+    ax_scatter = fig.add_subplot(gs[0])
+    ax_heat = fig.add_subplot(gs[1])
+
+    # 2. Aggregate data elegantly using pandas groupby instead of a manual loop
+    df_agg = df_all.groupby(["model_name", "pretty_name", color_col], as_index=False)[[x_col, y_col]].mean()
+
+    global_top_y = df_all[y_col].max() + 1.5
+    global_bottom_y = df_all[y_col].min() - 1.5
+
+    # 3. Populate axes via subfunctions
+    pareto_frontier_oneplot(df_agg, ax_scatter, x_col=x_col, y_col=y_col, color_col=color_col, 
+                            global_top_y=global_top_y, global_bottom_y=global_bottom_y, 
+                            bg_color=bg_color)
+    
+    plot_benchmark_heatmap(df_all, ax_heat, y_col=y_col)
+
+    # 4. Finalize and save
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
+    plt.close(fig)
+
 if __name__ == "__main__":
     benchmarking_dir = sys.argv[1]
 
@@ -208,10 +519,17 @@ if __name__ == "__main__":
         row["model_name"] = model_dir
         original_name = model_original_names[model_dir]
         row["original_name"] = original_name
+        row["embed_width"] = model_emb_w[original_name]
+        row["large_emb"] = model_emb_w[original_name] > 950
         row["size_millions"] = model_sizes[original_name]
         row["model_family"] = model_family(original_name)
         row["pretty_name"] = pretty_names(model_dir)
         row["param_comb_id"] = param_comb_id
+
+        if "parameters" in row:
+            for key, v in json.loads(row["parameters"]).items():
+                if key in gdbt_params_list:
+                    row[f'param_{key}'] = v
 
         ont_rows = []
         for ont in ['DEEPLOC', "MF", "CC", "BP"]:
@@ -219,6 +537,12 @@ if __name__ == "__main__":
             if "Sort Score" in ont_row:
                 ont_row['ontology'] = ont
                 ont_rows.append(ont_row)
+            else:
+                if "parameters" in row:
+                    if len(row["parameters"]) > 10:
+                        ont_row["Sort Score"] = -99999
+                        ont_row["ontology"] = ont
+                        ont_rows.append(ont_row)
         lines += ont_rows
 
     
@@ -226,10 +550,28 @@ if __name__ == "__main__":
     #df["Overall Score"] = df[["BP - Sort Score", "MF - Sort Score",
     #    "CC - Sort Score", "DEEPLOC - Sort Score"]].mean(axis=1)*100
     df = df.sort_values(by="Sort Score", ascending=False)
+    owa_metric_name, owa_metric_cols = metrics[-1]
+    df[owa_metric_name] = df[owa_metric_cols].mean(axis=1)
+    df.to_csv(f"{benchmarking_dir}/results_all.tsv", sep="\t", index=False)
+    
 
-    #Get best Overall Score by model_name
+    #Get best OWA Score by model_name
     df_best = []
     for model_name, group_df in df.groupby(["model_name", "ontology"]):
+        best_row = group_df.loc[group_df[owa_metric_name].idxmax()]
+        best_row = {k: v for k, v in best_row.items()}
+        best_row["N_Tests"] = len(group_df)
+        df_best.append(best_row)
+
+    df_best = pd.DataFrame(df_best)
+    df_best = df_best.sort_values(by=owa_metric_name, ascending=False)
+    df_best.to_csv(f"{benchmarking_dir}/results_{owa_metric_name}.tsv", sep="\t", index=False)
+    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier_{owa_metric_name}.png", y_col=owa_metric_name)
+
+    #Get best Sort Score by model_name
+    df_best = []
+    no_oom_df = df[df['Sort Score'] >= 0]
+    for model_name, group_df in no_oom_df.groupby(["model_name", "ontology"]):
         best_row = group_df.loc[group_df["Sort Score"].idxmax()]
         best_row = {k: v for k, v in best_row.items()}
         best_row["N_Tests"] = len(group_df)
@@ -237,17 +579,56 @@ if __name__ == "__main__":
 
     df_best = pd.DataFrame(df_best)
     df_best = df_best.sort_values(by="Sort Score", ascending=False)
-    df_best.to_csv(f"{benchmarking_dir}/results_best.tsv", sep="\t", index=False)
-    df.to_csv(f"{benchmarking_dir}/results_all.tsv", sep="\t", index=False)
-    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier.png")
+    df_best.to_csv(f"{benchmarking_dir}/results_best_overall.tsv", sep="\t", index=False)
+    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall.png", y_col="Sort Score")
+    pareto_heatmap_combined_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall_combined.png", y_col="Sort Score")
+    
 
-    cols_simple = ["original_name", "size_millions", "model_family", "ontology", "Sort Score", 
+    cols_simple = ["original_name", "size_millions", "embed_width", "model_family", "ontology", owa_metric_name, "Sort Score", 
         "N_Tests", "param_comb_id", "parameters"]
-    cols_simple2 = ["original_name", "size_millions", "model_family", "ontology", "Sort Score", 
+    cols_simple2 = ["original_name", "size_millions", "embed_width", "model_family", "ontology", owa_metric_name, "Sort Score", 
         "param_comb_id", "parameters"]
 
     df_best[cols_simple].to_csv(f"{benchmarking_dir}/results_best_simple.tsv", sep="\t", index=False)
     df[cols_simple2].to_csv(f"{benchmarking_dir}/results_all_simple.tsv", sep="\t", index=False)
+
+    #Find out at which metrics large_emb=True beats large_emb=False more or less
+    
+
+    m_comp_results = []
+
+    for m_name, m_cols in metrics:
+        print(m_name, m_cols)
+        large_emb_true_df = df_best[df_best["size_millions"] > 1100]
+        large_emb_false_df = df_best[df_best["size_millions"] < 1100]
+
+        l_true_scores = large_emb_true_df[m_cols].mean(axis=1)
+        #print(l_true_scores)
+        l_true_mean = l_true_scores.mean()
+        #print(l_true_mean)
+        l_false_scores = large_emb_false_df[m_cols].mean(axis=1)
+        #print(l_false_scores)
+        l_false_mean = l_false_scores.mean()
+        #print(l_false_mean)
+        
+        diff = l_true_mean - l_false_mean
+        print(diff)
+        
+        print("\n\n")
+
+        m_comp_results.append(
+            {
+                "metric": m_name,
+                "diff": diff
+            }
+        )
+
+    m_comp_results = pd.DataFrame(m_comp_results)
+    m_comp_results.to_csv(f"{benchmarking_dir}/metric_comparison.tsv", sep="\t", index=False)
+        
+        
+        
+        
         
         
         

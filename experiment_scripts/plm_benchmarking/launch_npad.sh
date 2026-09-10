@@ -1,5 +1,5 @@
 #!/bin/bash
-N_COMBINATIONS=32
+N_COMBINATIONS=40
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
@@ -16,15 +16,18 @@ mkdir -p logs
 # Define MODELS and Submit GPU Jobs
 # ---------------------------------------------------------
 declare -a configs=(
-    "esmc_300" $HEAVY_TEMPLATE_PATH
-    "e1_600" $HEAVY_TEMPLATE_PATH
-    "ankh3_large" $HEAVY_TEMPLATE_PATH
-    "ankh2_large" $HEAVY_TEMPLATE_PATH
-    "ankh_large" $HEAVY_TEMPLATE_PATH
-    "esm2_650" $LIGHT_TEMPLATE_PATH
-    "esm2_150" $LIGHT_TEMPLATE_PATH
-    "ankh_base" $LIGHT_TEMPLATE_PATH
-    "e1_300" $LIGHT_TEMPLATE_PATH
+    "amplify_120 $LIGHT_TEMPLATE_PATH"
+    "e1_150 $LIGHT_TEMPLATE_PATH"
+    "amplify_350 $LIGHT_TEMPLATE_PATH"
+    "ankh_large $LIGHT_TEMPLATE_PATH"
+    "ankh3_large $LIGHT_TEMPLATE_PATH"
+    #"esmc_300 $LIGHT_TEMPLATE_PATH"
+    #"e1_600 $LIGHT_TEMPLATE_PATH"
+    #"ankh2_large $HEAVY_TEMPLATE_PATH"
+    #"esm2_650 $LIGHT_TEMPLATE_PATH"
+    #"esm2_150 $LIGHT_TEMPLATE_PATH"
+    #"ankh_base $LIGHT_TEMPLATE_PATH"
+    #"e1_300 $LIGHT_TEMPLATE_PATH"
 )
 
 # Loop over the configurations and submit a job for each
@@ -38,11 +41,11 @@ for config in "${configs[@]}"; do
     OUT_DIR="$BASE_RESULTS_DIR/$MODEL_NAME"
     RESULT_TSV_PATH="$OUT_DIR/optimized_results_${N_COMBINATIONS}.tsv"
 
-    ##Submit only if the result file doesn't exist
-    #if [ -f "$RESULT_TSV_PATH" ]; then
-    #    echo "Result file already exists: $RESULT_TSV_PATH. Skipping job submission."
-    #    continue
-    #fi
+    #Submit only if the result file doesn't exist
+    if [ -f "$RESULT_TSV_PATH" ]; then
+        echo "Result file already exists: $RESULT_TSV_PATH. Skipping job submission."
+        continue
+    fi
 
     #Create result dir
     mkdir -p "$OUT_DIR"
