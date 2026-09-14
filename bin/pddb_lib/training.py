@@ -1,3 +1,12 @@
+
+import cupy as cp
+# ==========================================
+# ATIVAÇÃO DA UNIFIED MEMORY (CUDA MANAGED)
+# ==========================================
+# Permite que alocações acima do limite da VRAM (16GB) transbordem para a RAM do host.
+cp.cuda.set_allocator(cp.cuda.MemoryPool(cp.cuda.malloc_managed).malloc)
+# ==========================================
+
 from copy import copy
 from random import sample
 
@@ -12,11 +21,20 @@ from py_boost.gpu.losses import BCELoss, BCEMetric
 from py_boost import GradientBoosting
 from py_boost.multioutput.sketching import RandomSamplingSketch
 import numpy as np
-import cupy as cp
 import networkx as nx
 import obonet
 
 from pddb_lib.custom_statistics import fmax, fmax_dual, macro_fmax_dual
+
+def to_float32(arr):
+    """Garante que o array seja float32, reduzindo o uso de VRAM pela metade."""
+    if arr is None:
+        return None
+    if isinstance(arr, np.ndarray) and arr.dtype != np.float32:
+        return arr.astype(np.float32)
+    elif isinstance(arr, cp.ndarray) and arr.dtype != cp.float32:
+        return arr.astype(cp.float32)
+    return arr
 
 class BCEWithNaNLoss(BCELoss):
 
@@ -95,6 +113,11 @@ class WarmStart(Callback):
         return
 
 def eval_param_comb(params_dict, train_x, test_x, train_y, test_y, mask_nan=True):
+    train_x = to_float32(train_x)
+    train_y = to_float32(train_y)
+    test_x = to_float32(test_x)
+    test_y = to_float32(test_y)
+
     try:
         if mask_nan:
             model = GradientBoosting(
@@ -152,6 +175,11 @@ def eval_param_comb(params_dict, train_x, test_x, train_y, test_y, mask_nan=True
 
 
 def train_param_comb(params_dict, train_x, test_x, train_y, test_y):
+    train_x = to_float32(train_x)
+    train_y = to_float32(train_y)
+    test_x = to_float32(test_x)
+    test_y = to_float32(test_y)
+    
     try:
         model = GradientBoosting(
             # "bce",
@@ -226,6 +254,11 @@ def reduce_train_negatives_to(train_x, train_y, target_ratio, use_nan=True):
 
 
 def train_and_pred(train_x, train_y, test_x, test_y, params_dict, has_nan):
+    train_x = to_float32(train_x)
+    train_y = to_float32(train_y)
+    test_x = to_float32(test_x)
+    test_y = to_float32(test_y)
+    
     ncols = train_y.shape[1]
     sketch_perc = 0.2
     sketch_size = round(ncols * sketch_perc)
@@ -271,6 +304,7 @@ def train_and_pred(train_x, train_y, test_x, test_y, params_dict, has_nan):
     del model
     import gc
     gc.collect()
+    cp.get_default_memory_pool().free_all_blocks()
 
     return y_pred_test
 

@@ -4,6 +4,7 @@ import sys
 import os
 import matplotlib.gridspec as gridspec
 import seaborn as sns
+import math
 import pandas as pd
 import matplotlib.ticker as mtick
 import matplotlib.pyplot as plt
@@ -11,6 +12,8 @@ import matplotlib.patheffects as pe
 import numpy as np
 
 from pddb_lib.sample_metaparameters import gdbt_params_list
+
+#When two param_comb_id of very close values in Sort Score are present, choose the one with less forest complexity
 
 metrics = [
     ("Overall Score", ["Sort Score"]),
@@ -71,6 +74,35 @@ MARKER_MAP = {
     "amplify": "v",    # Triangle Down
     "unknown": "x"     # Cross
 }
+
+
+def pyboost_complexity_idx(row):
+    # Parameters that increase complexity (Structural Capacity)
+    max_depth = row["param_max_depth"]
+    ntrees = row["param_ntrees"]
+    max_bin = row["param_max_bin"]
+    
+    # Parameters that decrease complexity (Growth Constraints)
+    min_data_in_leaf = row["param_min_data_in_leaf"]
+    min_gain_to_split = row["param_min_gain_to_split"]
+    
+    # 1. Calculate the unconstrained potential of the forest
+    # 2^max_depth represents the maximum possible leaves per tree
+    tree_capacity = 2 ** max_depth
+    forest_capacity = ntrees * tree_capacity
+    resolution = max_bin 
+    
+    numerator = forest_capacity * resolution
+    
+    # 2. Calculate the penalizing constraints
+    # (1 + min_gain_to_split) prevents division by zero
+    denominator = min_data_in_leaf * (1 + min_gain_to_split)
+    
+    # 3. Calculate Index
+    # Use log10 to compress the scale into a highly readable float
+    complexity_ratio = numerator / denominator
+    
+    return math.log10(complexity_ratio)
 
 def model_family(model_name: str):
     m_low = model_name.lower()
@@ -221,96 +253,6 @@ def pareto_frontier_plot(df_all: pd.DataFrame, output_path: str,
     # Adjust layout padding so the outward-pushed labels don't get cropped
     fig.tight_layout(rect=[0.02, 0.02, 1, 1])
     fig.savefig(output_path, dpi=400, facecolor=bg_color)
-
-'''def pareto_frontier_oneplot(df: pd.DataFrame,
-                        ax,
-                        x_col: str = "size_millions", 
-                        y_col: str = "Sort Score",
-                        color_col: str = "model_family",
-                        global_top_y: float = 90,
-                        global_bottom_y: float = 60,
-                        bg_color: str = "#FCFBF9"):
-    #df_all[y_col] = df_all[y_col] * 100
-
-    ontologies = ["MF", "CC", "BP", "DEEPLOC"]
-    
-    frontier_line_color = "#e74c3c"
-    frontier_bg_color = "#ea9999"
-
-    global_y_range = global_top_y - global_bottom_y
-
-    ax.set_facecolor(bg_color)
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.yaxis.grid(True, linestyle='-', which='major', 
-        color='lightgrey', alpha=0.7)
-    
-    ax.set_axisbelow(True)
-
-    y_min = df[y_col].min() - (df[y_col].max() - df[y_col].min()) * 0.1
-    
-    # Set the drop height to exactly 50% of the Y-axis range so it fades out completely mid-air
-    y_range = df[y_col].max() - df[y_col].min()
-    gradient_drop = y_range * 0.50
-
-    # --- 1. Compute and Plot the Global Frontier ---
-    frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
-    
-    ax.plot(frontier_df[x_col], frontier_df[y_col]-0.0005, 
-            color=frontier_line_color, linestyle="--", linewidth=5,
-                label="Efficiency Frontier", zorder=2)
-    
-    add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col]-0.0005, 
-                    color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
-
-    # --- 2. Plot all models individually by family ---
-    groups = df.groupby(color_col)
-    
-    for name, group in groups:
-        marker = MARKER_MAP.get(name.lower(), "o")
-        group = group.sort_values(by=x_col)
-        
-        line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
-                        marker=marker, markersize=9, linewidth=2, zorder=3)
-        
-        # Add the parallel gradient for the individual lines, making it slightly shorter so it doesn't clutter
-        add_gradient_fill(ax, group[x_col], group[y_col], 
-                        color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
-        
-        for i, row in group.iterrows():
-            pos_dot = (row[x_col], row[y_col])
-            
-            is_frontier = (row['model_name'] in frontier_df['model_name'].values)
-            y_offset = 13 if is_frontier else 8
-            
-            ax.annotate(row["pretty_name"], pos_dot, 
-                        xytext=(0, y_offset), textcoords="offset points", 
-                        fontsize=9 if is_frontier else 8,
-                        color="#333333",
-                        ha='center', va='bottom', zorder=5 if is_frontier else 4,
-                        fontweight="bold" if is_frontier else "normal",
-                        alpha=0.8 if is_frontier else 0.95,
-                        path_effects=[pe.withStroke(linewidth=2, foreground=bg_color)])
-    ax.legend(frameon=False, loc="lower right")
-    #ax.set_title(ont, pad=15, fontsize=14)
-    
-    ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
-    # Sup-labels with explicit position coordinates to push them outward
-    ax.set_ylabel("Overall Score (%)", fontweight='bold', color='#444444', x=0.015)
-    ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444', y=0.02)
-    ax.set_xscale("log")
-    # Write the X label values in absolute numbers (not scientific notation)
-    ax.xaxis.set_major_formatter(mtick.FormatStrFormatter("%.0f"))
-    ax.xaxis.set_minor_formatter(mtick.FormatStrFormatter("%.0f"))
-    # Font size 8 on x and y axis minor and major values
-    ax.tick_params(axis='both', which='major',labelsize=8)
-    ax.tick_params(axis='both', which='minor',labelsize=8)
-
-    # X grid every 500 million parameters
-    ax.xaxis.grid(True, linestyle='-', which='major', 
-        color='lightgrey', alpha=0.7)
-    # X major is every 500:
-    ax.xaxis.set_major_locator(mtick.MultipleLocator(500))'''
 
 def pareto_frontier_oneplot(df: pd.DataFrame,
                             ax: plt.Axes,
@@ -484,8 +426,8 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
     # 2. Aggregate data elegantly using pandas groupby instead of a manual loop
     df_agg = df_all.groupby(["model_name", "pretty_name", color_col], as_index=False)[[x_col, y_col]].mean()
 
-    global_top_y = df_all[y_col].max() + 1.5
-    global_bottom_y = df_all[y_col].min() - 1.5
+    global_top_y = df_all[y_col].max()
+    global_bottom_y = df_all[y_col].min()
 
     # 3. Populate axes via subfunctions
     pareto_frontier_oneplot(df_agg, ax_scatter, x_col=x_col, y_col=y_col, color_col=color_col, 
@@ -493,6 +435,9 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
                             bg_color=bg_color)
     
     plot_benchmark_heatmap(df_all, ax_heat, y_col=y_col)
+
+    ax_scatter.set_title("Efficiency Frontier of PLMs", fontsize=14, weight='bold')
+    ax_heat.set_title("Heatmap of Task-Specific Scores", fontsize=14, weight='bold')
 
     # 4. Finalize and save
     fig.tight_layout()
@@ -531,6 +476,10 @@ if __name__ == "__main__":
                 if key in gdbt_params_list:
                     row[f'param_{key}'] = v
 
+            row["forest_complexity_index"] = pyboost_complexity_idx(row)
+        else:
+            row["forest_complexity_index"] = float('nan')
+
         ont_rows = []
         for ont in ['DEEPLOC', "MF", "CC", "BP"]:
             ont_row = {k.replace(f'{ont} - ', ''): v for k, v in row.items() if (not ' - ' in k) or (f'{ont} - ' in k)}
@@ -547,32 +496,20 @@ if __name__ == "__main__":
 
     
     df = pd.DataFrame(lines)
-    #df["Overall Score"] = df[["BP - Sort Score", "MF - Sort Score",
-    #    "CC - Sort Score", "DEEPLOC - Sort Score"]].mean(axis=1)*100
-    df = df.sort_values(by="Sort Score", ascending=False)
-    owa_metric_name, owa_metric_cols = metrics[-1]
-    df[owa_metric_name] = df[owa_metric_cols].mean(axis=1)
+    df["Sort_Score_Binned"] = ((df["Sort Score"] * 100)*10).round() / 10  # Groups by 0.05 increments
+    df = df.sort_values(
+        by=["Sort_Score_Binned", "forest_complexity_index"], 
+        ascending=[False, True]
+    )
     df.to_csv(f"{benchmarking_dir}/results_all.tsv", sep="\t", index=False)
     
-
-    #Get best OWA Score by model_name
-    df_best = []
-    for model_name, group_df in df.groupby(["model_name", "ontology"]):
-        best_row = group_df.loc[group_df[owa_metric_name].idxmax()]
-        best_row = {k: v for k, v in best_row.items()}
-        best_row["N_Tests"] = len(group_df)
-        df_best.append(best_row)
-
-    df_best = pd.DataFrame(df_best)
-    df_best = df_best.sort_values(by=owa_metric_name, ascending=False)
-    df_best.to_csv(f"{benchmarking_dir}/results_{owa_metric_name}.tsv", sep="\t", index=False)
-    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier_{owa_metric_name}.png", y_col=owa_metric_name)
-
     #Get best Sort Score by model_name
     df_best = []
     no_oom_df = df[df['Sort Score'] >= 0]
+    
     for model_name, group_df in no_oom_df.groupby(["model_name", "ontology"]):
-        best_row = group_df.loc[group_df["Sort Score"].idxmax()]
+        #already sorted, get first value
+        best_row = group_df.iloc[0]
         best_row = {k: v for k, v in best_row.items()}
         best_row["N_Tests"] = len(group_df)
         df_best.append(best_row)
@@ -584,10 +521,10 @@ if __name__ == "__main__":
     pareto_heatmap_combined_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall_combined.png", y_col="Sort Score")
     
 
-    cols_simple = ["original_name", "size_millions", "embed_width", "model_family", "ontology", owa_metric_name, "Sort Score", 
-        "N_Tests", "param_comb_id", "parameters"]
-    cols_simple2 = ["original_name", "size_millions", "embed_width", "model_family", "ontology", owa_metric_name, "Sort Score", 
-        "param_comb_id", "parameters"]
+    cols_simple = ["original_name", "size_millions", "embed_width", "model_family", "ontology", "Sort Score", 
+        "N_Tests", "param_comb_id", "forest_complexity_index", "parameters"]
+    cols_simple2 = ["original_name", "size_millions", "embed_width", "model_family", "ontology", "Sort Score", 
+        "param_comb_id", "forest_complexity_index", "parameters"]
 
     df_best[cols_simple].to_csv(f"{benchmarking_dir}/results_best_simple.tsv", sep="\t", index=False)
     df[cols_simple2].to_csv(f"{benchmarking_dir}/results_all_simple.tsv", sep="\t", index=False)

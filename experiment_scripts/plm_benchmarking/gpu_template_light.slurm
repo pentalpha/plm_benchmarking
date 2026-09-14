@@ -1,8 +1,8 @@
 #!/bin/bash
 #SBATCH --partition=gpu-8-v100  
 #SBATCH --gpus-per-node=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=32G    
+#SBATCH --cpus-per-task=10
+#SBATCH --mem=42G    
 #SBATCH --time=10:00:00          
 #SBATCH --job-name=plm_bench
 #SBATCH --output=logs/%x_%j.out
