@@ -9,11 +9,17 @@ import pandas as pd
 import matplotlib.ticker as mtick
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+from matplotlib.text import TextPath
+from matplotlib.patches import PathPatch
+from matplotlib.transforms import Affine2D
+from matplotlib.font_manager import FontProperties
 import numpy as np
 
 from pddb_lib.sample_metaparameters import gdbt_params_list
 
 #When two param_comb_id of very close values in Sort Score are present, choose the one with less forest complexity
+
+free_serif_fontprop = FontProperties(family="FreeSerif", weight="light")
 
 metrics = [
     ("Overall Score", ["Sort Score"]),
@@ -56,14 +62,15 @@ model_emb_w = {
     "facebook/esm2_t33_650M_UR50D": 1280,
     "facebook/esm2_t36_3B_UR50D": None,
     "biohub/ESMC-300M-hf": 960,
-    "biohub/ESMC-600M-hf": None,
+    "biohub/ESMC-600M-hf": 1152,
     "flair-bio/amplify-120m": 640,
-    "flair-bio/amplify-350m": None,
+    "flair-bio/amplify-350m": 960,
     "biohub/ESMC-300M-hf": 960,
-    "biohub/ESMC-600M-hf": None,
+    "biohub/ESMC-600M-hf": 1152,
 }
 
 model_original_names = {v: k for k, v in model_simple_names.items()}
+
 
 # Define specific marker shapes for each family
 MARKER_MAP = {
@@ -126,6 +133,9 @@ def model_family(model_name: str):
 
 def pretty_names(model_name):
     m = model_name.replace('_', ' ').title()
+    if "nlu" in m.lower():
+        m = m.replace(" Nlu", "")
+    m = m.replace("Esm", "ESM").replace('SMc', "SMC")
     return m
 
 def get_convex_pareto_frontier(df: pd.DataFrame, x_col: str, y_col: str) -> pd.DataFrame:
@@ -319,7 +329,7 @@ def pareto_frontier_oneplot(df: pd.DataFrame,
     ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444')
     
     # Use ScalarFormatter on a log scale to safely show 500, 1000 instead of 10^x
-    ax.set_xscale("log")
+    #ax.set_xscale("log")
     formatter = mtick.ScalarFormatter()
     formatter.set_scientific(False)
     ax.xaxis.set_major_formatter(formatter)
@@ -353,6 +363,7 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
     cols = ["Embedding\nWidth", "Million\nParameters", "MF", "CC", "BP", "DEEPLOC"]
     existing_cols = [c for c in cols if c in pivot_df.columns]
     pivot_df = pivot_df[existing_cols]
+    #pivot_df.insert(2, " ", np.nan)
     
     # 3. Sort models by their average performance on the metrics (excluding meta columns)
     metric_cols = [c for c in ["MF", "CC", "BP", "DEEPLOC"] if c in pivot_df.columns]
@@ -361,15 +372,15 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
     pivot_df = pivot_df.drop(columns=["Average"]) 
     
     # --- NEW: Inject empty rows to leave space for future models ---
-    future_rows = pd.DataFrame(np.nan, index=["Future Model A", "Future Model B"], columns=pivot_df.columns)
-    pivot_df = pd.concat([pivot_df, future_rows])
+    #future_rows = pd.DataFrame(np.nan, index=["Future Model A", "Future Model B"], columns=pivot_df.columns)
+    #pivot_df = pd.concat([pivot_df, future_rows])
     
     # 4. Normalize data per-column (0 to 1) so each column has its own color scale
     # NaNs will be ignored during min/max calculation and remain NaNs
     normalized_df = (pivot_df - pivot_df.min()) / (pivot_df.max() - pivot_df.min())
 
     # For ["Embedding\nWidth", "Million\nParameters"], less is better. So we should invert these values
-    normalized_df[["Embedding\nWidth", "Million\nParameters"]] = 1 - normalized_df[["Embedding\nWidth", "Million\nParameters"]]
+    #normalized_df[["Embedding\nWidth", "Million\nParameters"]] = 1 - normalized_df[["Embedding\nWidth", "Million\nParameters"]]
     
     # Build a custom annotation array handling the empty future rows gracefully
     annot_array = []
@@ -385,26 +396,86 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
                 row_annots.append(f"{val:.1f}") # 1 decimal for scores
         annot_array.append(row_annots)
     
-    # 5. Plot the stylized heatmap 
+    # Create masks to isolate the two sections
+    mask_dimensions = np.zeros_like(normalized_df, dtype=bool)
+    mask_dimensions[:, 2:] = True  # Hide the score columns
+
+    mask_scores = np.zeros_like(normalized_df, dtype=bool)
+    mask_scores[:, :2] = True      # Hide the dimension columns
+    
+    # Plot Dimensions with a neutral/different colormap (e.g., 'bone_r', 'Blues', 'Greys')
     sns.heatmap(normalized_df, 
-                annot=annot_array,       
-                fmt="",                  
-                cmap="viridis",          
-                linewidths=3,            
-                linecolor='white',       
-                square=False,            
-                cbar=False,              
-                ax=ax)
+                annot=annot_array, fmt="", cmap="flare",          
+                linewidths=3, linecolor='white', cbar=False, 
+                mask=mask_dimensions, ax=ax)
+
+    # Plot Scores with Viridis
+    sns.heatmap(normalized_df, 
+                annot=annot_array, fmt="", cmap="viridis",          
+                linewidths=3, linecolor='white', cbar=False, 
+                mask=mask_scores, ax=ax)
     
     # 6. Format the axes
     ax.set_ylabel("") 
     ax.set_xlabel("")
     
-    ax.xaxis.tick_top()
+    #ax.xaxis.tick_top()
     ax.tick_params(axis='x', rotation=0, labelsize=9.5, labelcolor='black', length=0)
     
     # --- NEW: Reduced font size to 9.5 and increased padding to 12 to prevent overlap ---
     ax.tick_params(axis='y', rotation=0, labelsize=9.5, labelcolor='black', length=0, pad=12)
+
+    # 7. Add grouping brackets and labels below the x-axis using TextPath
+    def add_stretched_brace(ax, x_center, x_width, y_pos, text_label, y_text_offset):
+        # 1. Create the base TextPath for the brace using your preferred font
+        tp = TextPath((0, 0), "}", size=40, prop=free_serif_fontprop)
+        bbox = tp.get_extents()
+        
+        # 2. Extract original dimensions of the glyph
+        orig_width = bbox.width   # Will map to the vertical thickness
+        orig_height = bbox.height # Will map to the horizontal span
+        
+        # Calculate the exact center of the original glyph
+        cx = bbox.x0 + orig_width / 2.0
+        cy = bbox.y0 + orig_height / 2.0
+        
+        # 3. Calculate scale factors
+        # Lock the vertical thickness of the bracket to a constant axes fraction (e.g., 2.5% of figure height)
+        thickness = 0.019 
+        
+        # sy applies to the original height (which rotates to become the horizontal width across columns)
+        sy = x_width / orig_height
+        
+        # sx applies to the original width (which rotates to become the elegant vertical thickness)
+        sx = thickness / orig_width
+        
+        # 4. Build the transform: center -> scale -> rotate (point up) -> translate -> axes coordinates
+        transform = (Affine2D()
+                     .translate(-cx, -cy)
+                     .scale(sx=sx, sy=sy)
+                     .rotate_deg(-90)
+                     .translate(x_center, y_pos)
+                     + ax.get_xaxis_transform())
+                     
+        # 5. Create and add the path patch
+        # clip_on=False ensures it renders outside the bounds of the main graph
+        patch = PathPatch(tp, transform=transform, facecolor="#111111", edgecolor="none", clip_on=False)
+        ax.add_patch(patch)
+        
+        # 6. Add the label below the brace
+        ax.text(x_center, y_pos + y_text_offset, text_label, ha='center', va='top', 
+                fontsize=11, fontfamily="FreeSerif", color="#111111",
+                transform=ax.get_xaxis_transform())
+
+    # --- 1st Bracket: Model Dimensions ---
+    # Center is at x=1.0. We set the width to 1.9 to leave a tiny gap at the edges of the 2 columns.
+    add_stretched_brace(ax, x_center=1.0, x_width=1.7, y_pos=-0.08, 
+                        text_label="Model Dimensions", y_text_offset=-0.018)
+
+    # --- 2nd Bracket: Task-Specific Scores ---
+    # Center is at x=4.0. We set the width to 3.9 so it perfectly blankets the 4 columns.
+    add_stretched_brace(ax, x_center=4.0, x_width=3.7, y_pos=-0.08, 
+                        text_label="Task-specific Scores", y_text_offset=-0.018)
 
 
 def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
@@ -442,19 +513,31 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
     # 4. Finalize and save
     fig.tight_layout()
     fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
+    fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
     plt.close(fig)
 
 if __name__ == "__main__":
-    benchmarking_dir = sys.argv[1]
+    benchmarking_dir = "outputs/remote_results/plm_benchmarking/"#sys.argv[1]
 
     model_sizes = json.load(open("input_data/model_sizes.json"))
+    for prefix in ["nlu", "s2s"]:
+        name2 = "ElnaggarLab/ankh3-large"+'_'+prefix
+        model_original_names[f"ankh3_large_{prefix}"] = name2
+        model_emb_w[name2] = 1536
+        model_sizes[name2] = model_sizes["ElnaggarLab/ankh3-large"]
+    
     results_files = glob(os.path.join(benchmarking_dir, "*", "results_eval.json"))
     results_files += glob(os.path.join(benchmarking_dir, "*", "model_*", "results_eval.json"))
+
+    print("Results files:", len(results_files))
     
     lines = []
     for results_file in results_files:
         row = json.load(open(results_file))
         model_dir = os.path.basename(os.path.dirname(results_file))
+        if "ankh3" in results_file and not "nlu" in results_file:
+            #Ignore ankh3-large when NLU token is not used
+            continue
         if "model_" in model_dir:
             param_comb_id = model_dir.split("_")[-1]
             model_dir = os.path.basename(os.path.dirname(os.path.dirname(results_file)))

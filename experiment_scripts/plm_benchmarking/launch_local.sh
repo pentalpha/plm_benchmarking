@@ -1,12 +1,11 @@
 #!/bin/bash
-N_COMBINATIONS=48
+N_COMBINATIONS=40
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
-BASE_RESULTS_DIR="outputs/plm_benchmarking"
-EMBS_DIR="/home/pdaasobrinho/scratch/release_2"
-LIGHT_TEMPLATE_PATH="experiment_scripts/plm_benchmarking/gpu_template_light.slurm"
-HEAVY_TEMPLATE_PATH="experiment_scripts/plm_benchmarking/gpu_template_heavy.slurm"
+BASE_RESULTS_DIR="outputs/remote_results/plm_benchmarking"
+EMBS_DIR="/home/pita/fs/data/dimension_db/release_2"
+LIGHT_TEMPLATE_PATH="experiment_scripts/plm_benchmarking/gpu_template_local.slurm"
 # Create a directory for Slurm log files
 mkdir -p logs
 
@@ -16,24 +15,23 @@ mkdir -p logs
 # Define MODELS and Submit GPU Jobs
 # ---------------------------------------------------------
 declare -a configs=(
-    #"ankh3_large_s2s $LIGHT_TEMPLATE_PATH"
+    #"amplify_350 $LIGHT_TEMPLATE_PATH"
+    #"ankh3_large_nlu $LIGHT_TEMPLATE_PATH"
+    "esmc_600 $LIGHT_TEMPLATE_PATH"
+    #"amplify_120 $LIGHT_TEMPLATE_PATH"
+    #"e1_150 $LIGHT_TEMPLATE_PATH"
     #"ankh3_large $LIGHT_TEMPLATE_PATH"
-    #"esmc_600 $LIGHT_TEMPLATE_PATH"
-    "ankh3_large_nlu $LIGHT_TEMPLATE_PATH"
-    "amplify_350 $LIGHT_TEMPLATE_PATH"
-    "amplify_120 $LIGHT_TEMPLATE_PATH"
-    "e1_150 $LIGHT_TEMPLATE_PATH"
-    "ankh_base $LIGHT_TEMPLATE_PATH"
-    "ankh_large $LIGHT_TEMPLATE_PATH"
-    "esmc_300 $LIGHT_TEMPLATE_PATH"
-    "e1_600 $LIGHT_TEMPLATE_PATH"
-    "ankh2_large $LIGHT_TEMPLATE_PATH"
-    "esm2_650 $LIGHT_TEMPLATE_PATH"
-    "esm2_150 $LIGHT_TEMPLATE_PATH"
-    "e1_300 $LIGHT_TEMPLATE_PATH"
+    #"ankh_base $LIGHT_TEMPLATE_PATH"
+    #"ankh_large $LIGHT_TEMPLATE_PATH"
+    #"esmc_300 $LIGHT_TEMPLATE_PATH"
+    #"e1_600 $LIGHT_TEMPLATE_PATH"
+    #"ankh2_large $HEAVY_TEMPLATE_PATH"
+    #"esm2_650 $LIGHT_TEMPLATE_PATH"
+    #"esm2_150 $LIGHT_TEMPLATE_PATH"
+    #"e1_300 $LIGHT_TEMPLATE_PATH"
 )
 
-# Loop over the configurations and submit a job for each
+# Loop over the configurations, run a job for each and wait for each completion
 for config in "${configs[@]}"; do
     # Read the configuration into variables
     read -r MODEL_NAME TEMPLATE_PATH <<< "$config"
@@ -53,15 +51,15 @@ for config in "${configs[@]}"; do
     #Create result dir
     mkdir -p "$OUT_DIR"
 
-    echo "Submitting job: $JOB_NAME | Output Dir: $OUT_DIR | Parquet Prefix: $PARQUET_PREFIX"
+    echo "Running: $JOB_NAME | Output Dir: $OUT_DIR | Parquet Prefix: $PARQUET_PREFIX"
     echo "Template Slurm script: $TEMPLATE_PATH"
     
     # Submit to Slurm
-    sbatch --job-name="$JOB_NAME" $TEMPLATE_PATH \
+    bash $TEMPLATE_PATH \
         $N_TARGETS $MIN_ANNOTATIONS $MAX_TRAIN_PROTEINS \
         $PARQUET_PREFIX $OUT_DIR $N_COMBINATIONS
         
-    echo "Submitted -> $JOB_NAME"
+    echo "Done -> $JOB_NAME"
 done
 
-echo "All experiments have been queued successfully!"
+echo "All experiments have been runned successfully!"

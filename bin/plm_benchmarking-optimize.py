@@ -189,7 +189,17 @@ if __name__ == "__main__":
 
     models_trained = []
 
-    for config_i in range(len(parameter_options)):
+    #parameter combinations that frequently have high sort score
+    first_to_try = [40, 20, 6, 42, 23, 9, 15]
+    config_i_sequence = [config_i for config_i in range(len(parameter_options))]
+
+    if len(first_to_try) > 0:
+        others = [config_i 
+            for config_i in config_i_sequence 
+            if config_i not in first_to_try]
+        config_i_sequence = first_to_try + others
+
+    for config_i in config_i_sequence:
         
         model_dir = os.path.join(test_dir, f"model_{config_i}")
         if not os.path.exists(model_dir):
