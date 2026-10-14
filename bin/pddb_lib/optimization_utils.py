@@ -46,7 +46,6 @@ def run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, parents_dict, ch
     eval_metrics = {}
 
     for ont, datasets_dict in datasets_by_ont.items():
-        y_pred = y_preds[ont].to_numpy()
         y_pred_ids = y_preds["id"].to_list()
         
         if ont == 'deeploc':
@@ -71,11 +70,18 @@ def run_eval(datasets_by_ont, y_preds, params_dict, go_ia_dict, parents_dict, ch
         print("Weights:", weights)
         all_equal_ids = set(y_pred_ids) == set(y_test_ids)
 
-        #y_pred, y_test_cwa, y_test_owa, aligned_ids = align_predictions_and_test(
-        #    y_pred, y_pred_ids, y_test_cwa, y_test_owa, y_test_ids
-        #)
+        y_pred = y_preds[ont].to_numpy()
         if not all_equal_ids:
-            return None
+            intersection_perc = len(set(y_pred_ids).intersection(set(y_test_ids))) / len(y_test_ids)
+            if intersection_perc > 0.98:
+                print("aligning predictions and test sets because intersection_perc =", intersection_perc)
+                y_pred, y_test_cwa, y_test_owa, aligned_ids = align_predictions_and_test(
+                    y_pred, y_pred_ids, y_test_cwa, y_test_owa, y_test_ids
+                )
+            else:
+                print("Intersection perc:", intersection_perc, "Error!!!")
+                return None
+        
         if ont != 'deeploc':
             y_pred_norm = calc_normalized_y_pred(
                 y_pred, labels, parents_dict, children_dict, go_sortings[ont.upper()]

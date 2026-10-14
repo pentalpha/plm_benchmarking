@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --partition=gpu-4-a100
+#SBATCH --partition=gpu-4-h200
 #SBATCH --gpus-per-node=1
 #SBATCH --cpus-per-task=10
 #SBATCH --mem=40G

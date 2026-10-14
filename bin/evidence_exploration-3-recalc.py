@@ -50,10 +50,10 @@ python bin\evidence_exploration-
 if __name__ == "__main__":
     n_targets = int(sys.argv[1])
     min_annotations = int(sys.argv[2])
-    max_train_proteins = int(sys.argv[3]) #downsampling after loading
+    #max_train_proteins = int(sys.argv[3]) #downsampling after loading
     outputs_dir = 'outputs/'
-    test_dir = sys.argv[4]
-    feature_descs = sys.argv[5:]
+    test_dir = sys.argv[3]
+    #feature_descs = sys.argv[5:]
 
     sampling_prefix = f"{outputs_dir}/n_ont_target={n_targets}-min_proteins={min_annotations}"
     test_path = f"{sampling_prefix}.test_set.txt"
@@ -85,13 +85,13 @@ if __name__ == "__main__":
     for ont, datasets in datasets_by_ont.items():
         #TODO: load y_soft just to calculate percentages of different evidence types, positives, negatives and NaNs
         print("Loading", ont)
-        #train_df = load_data_optimized(datasets["train_y_path"], feature_descs, train_ids, y_to_load)
-        test_df = load_data_optimized(datasets["test_y_path"], feature_descs, test_ids, y_to_load)
+        test_df = pl.scan_parquet(datasets["test_y_path"]).select(["id"] + y_to_load)
+        test_df = test_df.filter(pl.col("id").is_in(list(test_ids)))
+        test_df = test_df.collect()
         datasets["test_df"] = test_df
 
         train_densities = load_to_check_density(datasets["train_y_path"])
         test_densities = load_to_check_density(datasets["test_y_path"])
-        #datasets["train_df"] = train_df
         densities[ont.lower()]['train'] = train_densities
         densities[ont.lower()]['test'] = test_densities
     
@@ -205,7 +205,9 @@ if __name__ == "__main__":
                 models_trained.append(eval_metrics)
             else:
                 print(f"Error running eval for {pred_path}")
-    
+
+        owa_metrics = [k for k, w in metric_weights_for_sorting.items() if 'OWA' in k]
+        cafa_metrics = [k for k, w in metric_weights_for_sorting.items() if 'CAFA' in k]
         
         for row in models_trained:
             for ont in ['MF', 'CC', "BP"]:
@@ -226,6 +228,10 @@ if __name__ == "__main__":
                 if 'Random Falses Min Perc' in row:
                     if ont_train_falses >= float(row['Random Falses Min Perc']):
                         print(f"Not using random falses for {alg_name} - {ont}: {row['Random Falses Min Perc']} <= {ont_train_falses}")
+                        for m in owa_metrics + cafa_metrics + ['Sort Score']:
+                            if m in new_row:
+                                new_row[m] = np.nan
+                        result_lines.append(new_row)
                     else:
                         print(f"Using random falses for {alg_name} - {ont}: {row['Random Falses Min Perc']} > {ont_train_falses}")
                         result_lines.append(new_row)
@@ -234,17 +240,18 @@ if __name__ == "__main__":
                     result_lines.append(new_row)
     
         results_df = pd.DataFrame(result_lines)
-        owa_metrics = [k for k, w in metric_weights_for_sorting.items() if 'OWA' in k]
-        cafa_metrics = [k for k, w in metric_weights_for_sorting.items() if 'CAFA' in k]
+
         results_df["OWA Score"] = results_df[owa_metrics].mean(axis=1)
         results_df["CWA Score"] = results_df[cafa_metrics].mean(axis=1)
+        results_df["Overall Score"] = (results_df["OWA Score"] + results_df["CWA Score"]) / 2
+        results_df["Sort Score"] = results_df["Overall Score"]
         results_df.to_csv(f"{test_dir}/all_results.tsv", sep="\t", index=False)
 
         best_param_lines = []
         for group_tp, group_df in results_df.groupby(['Algorithm', 'Ontology']):
             alg, ont = group_tp
 
-            group_df.sort_values(by=['Sort Score'], inplace=True)
+            group_df.sort_values(by=['Sort Score'], inplace=True, ascending=False)
             #Get first line as dict:
             best_line = group_df.iloc[0].to_dict()
             n_tests = len(group_df)

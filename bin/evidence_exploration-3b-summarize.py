@@ -74,7 +74,7 @@ if __name__ == "__main__":
     for group_tp, group_df in results_df.groupby(['Algorithm', 'Ontology']):
         alg, ont = group_tp
 
-        group_df.sort_values(by=['Sort Score'], inplace=True)
+        group_df.sort_values(by=['Sort Score'], inplace=True, ascending=False)
         #Get first line as dict:
         best_line = group_df.iloc[0].to_dict()
         best_param_lines.append(best_line)

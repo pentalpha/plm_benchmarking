@@ -1,5 +1,5 @@
 #!/bin/bash
-N_COMBINATIONS=40
+N_COMBINATIONS=64
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
@@ -17,13 +17,13 @@ mkdir -p logs
 declare -a configs=(
     #"amplify_350 $LIGHT_TEMPLATE_PATH"
     #"ankh3_large_nlu $LIGHT_TEMPLATE_PATH"
-    "esmc_600 $LIGHT_TEMPLATE_PATH"
+    #"esmc_600 $LIGHT_TEMPLATE_PATH"
     #"amplify_120 $LIGHT_TEMPLATE_PATH"
     #"e1_150 $LIGHT_TEMPLATE_PATH"
     #"ankh3_large $LIGHT_TEMPLATE_PATH"
     #"ankh_base $LIGHT_TEMPLATE_PATH"
     #"ankh_large $LIGHT_TEMPLATE_PATH"
-    #"esmc_300 $LIGHT_TEMPLATE_PATH"
+    "esmc_300 $LIGHT_TEMPLATE_PATH"
     #"e1_600 $LIGHT_TEMPLATE_PATH"
     #"ankh2_large $HEAVY_TEMPLATE_PATH"
     #"esm2_650 $LIGHT_TEMPLATE_PATH"

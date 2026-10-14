@@ -35,12 +35,12 @@ hyperparameter_space = {
     "es": [100, 150, 200, 300],
     "phylo": {"min": 0.9, "max": 0.99},
     "curated": {"min": 0.8, "max": 0.99},
-    "conditional_not": {"min": 0.3, "max": 0.4},
-    "curated_not": {"min": 0.01, "max": 0.35},
-    "derived_not": {"min": 0.03, "max": 0.12},
-    "phylo_not": {"min": 0.01, "max": 0.2},
+    "conditional_not": {"min": 0.1, "max": 0.4},
+    "curated_not": {"min": 0.01, "max": 0.4},
+    "derived_not": {"min": 0.01, "max": 0.4},
+    "phylo_not": {"min": 0.01, "max": 0.4},
     "Random Falses Min Perc": {"min": 0.1, "max": 0.35},
-    "Random False Val": {"min": 0.23, "max": 0.25},
+    "Random False Val": {"min": 0.1, "max": 0.4},
 }
 
 hyperparameter_space1 = {

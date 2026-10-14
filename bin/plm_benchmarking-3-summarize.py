@@ -2,17 +2,18 @@ import json
 from glob import glob
 import sys
 import os
-import matplotlib.gridspec as gridspec
-import seaborn as sns
 import math
+
 import pandas as pd
 import matplotlib.ticker as mtick
 import matplotlib.pyplot as plt
 import matplotlib.patheffects as pe
+import matplotlib.gridspec as gridspec
 from matplotlib.text import TextPath
 from matplotlib.patches import PathPatch
 from matplotlib.transforms import Affine2D
 from matplotlib.font_manager import FontProperties
+import seaborn as sns
 import numpy as np
 
 from pddb_lib.sample_metaparameters import gdbt_params_list
@@ -82,6 +83,19 @@ MARKER_MAP = {
     "unknown": "x"     # Cross
 }
 
+def find_n_trees(model_dir, ont_name):
+    #Log line ex: [11:39:02] Iter 4999; Sample 0, BCE = 0.43919452731834835;
+    log_path = os.path.join(model_dir, f"{ont.lower()}-train.log")
+    max_iter = None
+    if os.path.exists(log_path):
+        with open(log_path, 'r') as f:
+            for line in f:
+                if "Iter" in line:
+                    iter_num = int(line.split("Iter")[1].split(";")[0])
+                    max_iter = iter_num
+    else:
+        print(f"Log file not found: {log_path}")
+    return max_iter
 
 def pyboost_complexity_idx(row):
     # Parameters that increase complexity (Structural Capacity)
@@ -496,6 +510,9 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
 
     # 2. Aggregate data elegantly using pandas groupby instead of a manual loop
     df_agg = df_all.groupby(["model_name", "pretty_name", color_col], as_index=False)[[x_col, y_col]].mean()
+    print('In pareto frontier:')
+    for _, row in df_agg.iterrows():
+        print(row["pretty_name"], row[x_col], row[y_col])
 
     global_top_y = df_all[y_col].max()
     global_bottom_y = df_all[y_col].min()
@@ -516,7 +533,109 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
     fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
     plt.close(fig)
 
+def plot_cumulative_performance(df_all: pd.DataFrame, output_path: str, y_col: str = "Sort Score"):
+    """Plots the cumulative maximum overall score across hyperparameter tests to show diminishing returns."""
+    bg_color = "#FCFBF9"
+    fig, ax = plt.subplots(figsize=(12, 7))
+    fig.patch.set_facecolor(bg_color)
+    ax.set_facecolor(bg_color)
+    
+    # Clean up axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    ax.xaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    ax.set_axisbelow(True)
+
+    # 1. Parse test order to ensure chronological sorting
+    def parse_test_id(val):
+        try:
+            return int(val)
+        except ValueError:
+            return -1 # Default or weird strings are processed first
+            
+    df = df_all.copy()
+    df['test_order'] = df['param_comb_id'].apply(parse_test_id)
+    
+    # 2. Pivot the data so each row is a specific parameter configuration, 
+    # and the columns are the scores for the 4 ontologies.
+    pivot_df = df.pivot_table(
+        index=['pretty_name', 'model_family', 'param_comb_id', 'test_order'],
+        columns='ontology',
+        values=y_col,
+        aggfunc='first'
+    ).reset_index()
+    
+    # Sort chronologically by the parameter combination IDs
+    pivot_df = pivot_df.sort_values(by=["pretty_name", "test_order"])
+    
+    # 3. Calculate Cumulative Max per Ontology Independently
+    ontologies = ["MF", "CC", "BP", "DEEPLOC"]
+    existing_onts = [o for o in ontologies if o in pivot_df.columns]
+    
+    for ont in existing_onts:
+        # If a test crashed/OOM'd (<0) or wasn't evaluated for an ontology (NaN), treat its score as 0
+        pivot_df[ont] = pivot_df[ont].apply(lambda x: x if x >= 0 else 0).fillna(0)
+        
+        # Calculate the highest score seen *so far* for this specific ontology
+        pivot_df[f"{ont}_cummax"] = pivot_df.groupby("pretty_name")[ont].cummax()
+    
+    # 4. Calculate the Max Overall Score 
+    # This takes the mean of the 4 cumulative maximums, matching the Pareto frontier formula perfectly!
+    cummax_cols = [f"{ont}_cummax" for ont in existing_onts]
+    pivot_df["cummax_score"] = pivot_df[cummax_cols].mean(axis=1) * 100
+    
+    # Test number (X axis) is just the chronological step
+    pivot_df["test_number"] = pivot_df.groupby("pretty_name").cumcount() + 1
+    
+    # 5. Plot each PLM's cumulative performance
+    families = pivot_df["model_family"].unique()
+    cmap = sns.color_palette("deep", len(families))
+    color_dict = dict(zip(families, cmap))
+    
+    for name, group in pivot_df.groupby("pretty_name"):
+        fam = group["model_family"].iloc[0]
+        x = group["test_number"].values
+        y = group["cummax_score"].values
+        marker = MARKER_MAP.get(fam.lower(), "o")
+        
+        # Main cumulative line
+        ax.plot(x, y, color=color_dict[fam], linewidth=2.5, alpha=0.75, zorder=3)
+        
+        # Place a marker only at the final point to mark the end of the tuning sequence
+        ax.plot(x[-1], y[-1], marker=marker, color=color_dict[fam], markersize=9, zorder=4)
+        
+        # Label the end of the line elegantly
+        ax.annotate(name, 
+                    (x[-1], y[-1]), 
+                    xytext=(8, 0), 
+                    textcoords="offset points", 
+                    fontsize=9, 
+                    va='center', 
+                    color="#333333",
+                    path_effects=[pe.withStroke(linewidth=3, foreground=bg_color)])
+                    
+    # 6. Format axes
+    ax.set_xlabel("Number of Parameter Configurations Evaluated", fontweight='bold', color='#444444', fontsize=11, labelpad=12)
+    ax.set_ylabel("Max Overall Score Seen So Far (%)", fontweight='bold', color='#444444', fontsize=11, labelpad=12)
+    ax.set_title("Progress of GBDT Classifier Parameter Optimization", fontsize=15, weight='bold', pad=20)
+    
+    # 7. Custom Legend for Families
+    handles = [plt.Line2D([0], [0], color=color_dict[f], marker=MARKER_MAP.get(f.lower(), "o"), 
+                          lw=3, markersize=8, label=f.upper()) for f in families]
+    ax.legend(handles=handles, frameon=False, loc="lower right", title="Model Family", title_fontproperties={'weight':'bold'})
+    
+    # 8. Expand X limit to fit annotations on the right side
+    max_x = pivot_df["test_number"].max()
+    ax.set_xlim(0, max_x + (max_x * 0.2)) # Gives 20% horizontal breathing room for text labels
+    
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
+    fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
+    plt.close(fig)
+
 if __name__ == "__main__":
+    MAX_TEST = 64
     benchmarking_dir = "outputs/remote_results/plm_benchmarking/"#sys.argv[1]
 
     model_sizes = json.load(open("input_data/model_sizes.json"))
@@ -534,7 +653,8 @@ if __name__ == "__main__":
     lines = []
     for results_file in results_files:
         row = json.load(open(results_file))
-        model_dir = os.path.basename(os.path.dirname(results_file))
+        model_dir_raw = os.path.dirname(results_file)
+        model_dir = os.path.basename(model_dir_raw)
         if "ankh3" in results_file and not "nlu" in results_file:
             #Ignore ankh3-large when NLU token is not used
             continue
@@ -543,6 +663,7 @@ if __name__ == "__main__":
             model_dir = os.path.basename(os.path.dirname(os.path.dirname(results_file)))
         else:
             param_comb_id = "default"
+            model_dir = model_dir
         
         row["model_name"] = model_dir
         original_name = model_original_names[model_dir]
@@ -559,13 +680,29 @@ if __name__ == "__main__":
                 if key in gdbt_params_list:
                     row[f'param_{key}'] = v
 
-            row["forest_complexity_index"] = pyboost_complexity_idx(row)
-        else:
-            row["forest_complexity_index"] = float('nan')
-
         ont_rows = []
         for ont in ['DEEPLOC', "MF", "CC", "BP"]:
+
+            ntrees_exact = find_n_trees(model_dir_raw, ont)
             ont_row = {k.replace(f'{ont} - ', ''): v for k, v in row.items() if (not ' - ' in k) or (f'{ont} - ' in k)}
+            if ont in ['DEEPLOC', "MF"]:
+                ont_row["Input Width"] = row["embed_width"] * 3
+            else:
+                ont_row["Input Width"] = row["embed_width"]
+
+            if "parameters" in row:
+                if f"param_ntrees" in ont_row and ntrees_exact is not None:
+                    if ntrees_exact < ont_row["param_ntrees"]:
+                        x = ont_row["param_ntrees"]
+                        print(f"Less trees than max: {ntrees_exact} < {x} in {model_dir_raw}")
+                    ont_row["param_ntrees_max"] = ont_row["param_ntrees"]
+                    ont_row["param_ntrees"] = ntrees_exact
+                else:
+                    print(f"Exact n trees not found for {model_dir_raw}")
+                ont_row["forest_complexity_index"] = pyboost_complexity_idx(row)
+            else:
+                ont_row["forest_complexity_index"] = float('nan')
+            
             if "Sort Score" in ont_row:
                 ont_row['ontology'] = ont
                 ont_rows.append(ont_row)
@@ -579,7 +716,8 @@ if __name__ == "__main__":
 
     
     df = pd.DataFrame(lines)
-    df["Sort_Score_Binned"] = ((df["Sort Score"] * 100)*10).round() / 10  # Groups by 0.05 increments
+    df["Sort_Score_Binned"] = ((df["Sort Score"] * 100)*10).round() / 10  # Groups by 0.1 increments
+    df["Sort_Score_Binned2"] = (df["Sort Score"] * 50).round() / 50  # Groups by 2 increments
     df = df.sort_values(
         by=["Sort_Score_Binned", "forest_complexity_index"], 
         ascending=[False, True]
@@ -588,14 +726,24 @@ if __name__ == "__main__":
     
     #Get best Sort Score by model_name
     df_best = []
+    df_good = []
     no_oom_df = df[df['Sort Score'] >= 0]
     
     for model_name, group_df in no_oom_df.groupby(["model_name", "ontology"]):
         #already sorted, get first value
+        group_df["Success Rate"] = (len(group_df) / MAX_TEST) * 100
         best_row = group_df.iloc[0]
+        good_bin = group_df["Sort_Score_Binned2"].max()
+        ont_good = group_df[group_df["Sort_Score_Binned2"] == good_bin]
+        df_good.append(ont_good.copy())
         best_row = {k: v for k, v in best_row.items()}
-        best_row["N_Tests"] = len(group_df)
+        best_row["Success Rate"] = (len(group_df) / MAX_TEST) * 100
+        
         df_best.append(best_row)
+    
+    df_good = pd.concat(df_good, ignore_index=True)
+    df_good = df_good.sort_values(by="Sort_Score_Binned2", ascending=False)
+    df_good.to_csv(f"{benchmarking_dir}/results_good_overall.tsv", sep="\t", index=False)
 
     df_best = pd.DataFrame(df_best)
     df_best = df_best.sort_values(by="Sort Score", ascending=False)
@@ -603,11 +751,11 @@ if __name__ == "__main__":
     pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall.png", y_col="Sort Score")
     pareto_heatmap_combined_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall_combined.png", y_col="Sort Score")
     
-
-    cols_simple = ["original_name", "size_millions", "embed_width", "model_family", "ontology", "Sort Score", 
-        "N_Tests", "param_comb_id", "forest_complexity_index", "parameters"]
-    cols_simple2 = ["original_name", "size_millions", "embed_width", "model_family", "ontology", "Sort Score", 
-        "param_comb_id", "forest_complexity_index", "parameters"]
+    plot_cumulative_performance(df, f"{benchmarking_dir}/cumulative_performance.png", y_col="Sort Score")
+    cols_simple = ["original_name", "size_millions", "embed_width", "Input Width", "model_family", "ontology", "Sort Score", 
+        "Success Rate", "param_comb_id", "forest_complexity_index", "param_ntrees", "parameters"]
+    cols_simple2 = ["original_name", "size_millions", "embed_width", "Input Width", "model_family", "ontology", "Sort Score", 
+        "param_comb_id", "forest_complexity_index", "param_ntrees", "parameters"]
 
     df_best[cols_simple].to_csv(f"{benchmarking_dir}/results_best_simple.tsv", sep="\t", index=False)
     df[cols_simple2].to_csv(f"{benchmarking_dir}/results_all_simple.tsv", sep="\t", index=False)
@@ -645,8 +793,46 @@ if __name__ == "__main__":
 
     m_comp_results = pd.DataFrame(m_comp_results)
     m_comp_results.to_csv(f"{benchmarking_dir}/metric_comparison.tsv", sep="\t", index=False)
-        
-        
+    
+
+    correlations_to_find = [
+        ("Input Width", "forest_complexity_index"),
+        ("Input Width", "param_ntrees"),
+        ("Input Width", "Success Rate"),
+        ("size_millions", "forest_complexity_index"),
+        ("size_millions", "param_ntrees"),
+        ("size_millions", "Success Rate"),
+        ("embed_width", "forest_complexity_index"),
+        ("embed_width", "param_ntrees"),
+        ("embed_width", "Success Rate"),
+    ]
+
+    results = []
+    for col_x, col_y in correlations_to_find:
+        for ont in ["MF", "CC", "BP", "DEEPLOC", None]:
+            if ont:
+                df_o = df_good[df_good["ontology"] == ont]
+            else:
+                df_o = df_good
+            vals_x = df_o[col_x]
+            vals_y = df_o[col_y]
+            
+            r = np.corrcoef([vals_x, vals_y])
+            corr = r[0,1]
+            print(f"Correlation between {col_x} and {col_y} filtered by {ont}: {corr}")
+
+            results.append(
+                {
+                    "col_x": col_x,
+                    "col_y": col_y,
+                    "ont": ont,
+                    "correlation": corr
+                }
+            )
+    
+    results.sort(key=lambda x: abs(x["correlation"]))
+    for r in results:
+        print(r)
         
         
         

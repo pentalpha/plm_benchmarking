@@ -78,6 +78,53 @@ def n_models_trained(models_trained: list, ont: str):
                 count += 1
     return count
 
+def sort_param_options(i_options, preferred_i, model_test_dir):
+    model_dirs = [f'{model_test_dir}/model_{idx}/' for idx in i_options]
+    option_details = []
+    for model_dir in model_dirs:
+        idx = int(model_dir.split('_')[-1].strip('/'))
+        test_preds_basepath = os.path.join(model_dir, "y_pred")
+        results_eval_path = model_dir + "/results_eval.json"
+        results_eval = json.load(open(results_eval_path, 'r')) if os.path.exists(results_eval_path) else {}
+        n_trained = 0
+        n_tried = 0
+        for ont in ["deeploc", "mf", "cc", "bp"]:
+            preds_path = f"{model_dir}/y_pred.{ont}.parquet"
+            logpath = f"{model_dir}/{ont}-train.log"
+            eval_key = f"{ont.upper()} - Sort Score"
+            if os.path.exists(preds_path) or eval_key in results_eval:
+                n_trained += 1
+            if os.path.exists(logpath):
+                n_tried += 1
+        n_failed = n_tried - n_trained
+        should_try = 1.0
+        should_try -= n_trained
+        should_try -= n_failed/3
+        should_try += 1 if idx in preferred_i else 0
+        option = {
+            "idx": idx,
+            "n_failed": n_failed,
+            "n_trained": n_trained,
+            "should_try": should_try,
+            "is_preferred": idx in preferred_i,
+        }
+        option_details.append(option)
+
+    sorted_options = sorted(option_details, 
+        key=lambda x: (-x["should_try"], x["idx"]))
+    print("Options for", model_test_dir)
+    for opt in  sorted_options:
+        print(opt)
+    
+    idx_order = [opt["idx"] for opt in  sorted_options]
+
+    return idx_order
+    
+    
+
+    
+
+
 if __name__ == "__main__":
     '''python 32 120 80000 outputs/plm_benchmarking input_data/emb.ankh_base'''
     n_targets = int(sys.argv[1])
@@ -90,6 +137,10 @@ if __name__ == "__main__":
     benchmarking_dir = os.path.dirname(test_dir)
     param_options_json_path = os.path.join(benchmarking_dir, "parameter_options.json")
     parameter_options = json.load(open(param_options_json_path, 'r'))
+    #parameter combinations that frequently have high sort score
+    first_to_try = [40, 20, 6, 42, 23, 9, 15]
+    config_i_sequence = [config_i for config_i in range(len(parameter_options))]
+    config_i_sequence = sort_param_options(config_i_sequence, first_to_try, test_dir)
 
     #if n_combinations < len(parameter_options):
     #    parameter_options = [p for i, p in enumerate(parameter_options) 
@@ -189,15 +240,15 @@ if __name__ == "__main__":
 
     models_trained = []
 
-    #parameter combinations that frequently have high sort score
-    first_to_try = [40, 20, 6, 42, 23, 9, 15]
-    config_i_sequence = [config_i for config_i in range(len(parameter_options))]
+    
 
-    if len(first_to_try) > 0:
+    '''if len(first_to_try) > 0:
         others = [config_i 
             for config_i in config_i_sequence 
             if config_i not in first_to_try]
-        config_i_sequence = first_to_try + others
+        config_i_sequence = first_to_try + others'''
+    
+    
 
     for config_i in config_i_sequence:
         

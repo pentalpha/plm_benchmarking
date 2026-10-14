@@ -10,27 +10,25 @@ HEAVY_TEMPLATE_PATH="experiment_scripts/plm_benchmarking/gpu_template_heavy.slur
 # Create a directory for Slurm log files
 mkdir -p logs
 
-#conda run -n pyboost python -u bin/plm_benchmarking-prepare.py $N_COMBINATIONS
-
 # ---------------------------------------------------------
 # Define MODELS and Submit GPU Jobs
 # ---------------------------------------------------------
 declare -a configs=(
-    #"ankh3_large_s2s $LIGHT_TEMPLATE_PATH"
-    #"ankh3_large $LIGHT_TEMPLATE_PATH"
-    #"esmc_600 $LIGHT_TEMPLATE_PATH"
-    "ankh3_large_nlu $LIGHT_TEMPLATE_PATH"
-    "amplify_350 $LIGHT_TEMPLATE_PATH"
-    "amplify_120 $LIGHT_TEMPLATE_PATH"
-    "e1_150 $LIGHT_TEMPLATE_PATH"
-    "ankh_base $LIGHT_TEMPLATE_PATH"
-    "ankh_large $LIGHT_TEMPLATE_PATH"
-    "esmc_300 $LIGHT_TEMPLATE_PATH"
-    "e1_600 $LIGHT_TEMPLATE_PATH"
-    "ankh2_large $LIGHT_TEMPLATE_PATH"
-    "esm2_650 $LIGHT_TEMPLATE_PATH"
     "esm2_150 $LIGHT_TEMPLATE_PATH"
     "e1_300 $LIGHT_TEMPLATE_PATH"
+    "esmc_300 $LIGHT_TEMPLATE_PATH"
+    "esm2_650 $LIGHT_TEMPLATE_PATH"
+    "e1_600 $LIGHT_TEMPLATE_PATH"
+    "esmc_600 $LIGHT_TEMPLATE_PATH"
+    "ankh_base $LIGHT_TEMPLATE_PATH"
+    "ankh2_large $LIGHT_TEMPLATE_PATH"
+    #"ankh3_large_s2s $LIGHT_TEMPLATE_PATH"
+    #"ankh3_large $LIGHT_TEMPLATE_PATH"
+    #"ankh3_large_nlu $LIGHT_TEMPLATE_PATH"
+    #"amplify_350 $LIGHT_TEMPLATE_PATH"
+    #"amplify_120 $LIGHT_TEMPLATE_PATH"
+    #"e1_150 $LIGHT_TEMPLATE_PATH"
+    #"ankh_large $LIGHT_TEMPLATE_PATH"
 )
 
 # Loop over the configurations and submit a job for each
