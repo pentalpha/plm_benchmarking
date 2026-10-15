@@ -267,11 +267,8 @@ def plot_evi_values_scale(ax, df_best_recalc, base_dir, strategy = "Soft + RNS")
     ax.axis('off') # Remove réguas e espinhas do gráfico padrão
     ax.set_xlim(-0.15, 1.15)
     ax.set_ylim(-0.9, 2.8)
-    ax.set_title("C: Best-performing Soft Label Values",
+    ax.set_title("C: Optimized Soft Labeling Scheme",
                  fontsize=12, fontweight='bold', y=1.02)
-    #fig.tight_layout()
-    #fig.savefig(os.path.join(base_dir, 'conceptual_evidence_plot.png'), dpi=400, bbox_inches='tight', facecolor='white')
-    print("Gráfico conceitual minimalista gerado com sucesso!")
 
 def get_marker(alg_name: str) -> str:
     """Case-insensitive marker lookup for algorithm families."""
@@ -416,7 +413,7 @@ def plot_cumulative_performance_by_ontology(
     axes[1].text(
         0.5,
         1.15,
-        "A: Cumulative Best Overall Score by Ontology",
+        "A: Timeline of Parameter Optimization",
         transform=axes[1].transAxes,
         ha="center",
         va="bottom",

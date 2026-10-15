@@ -189,95 +189,6 @@ def add_gradient_fill(ax, x, y, color, drop_height, max_alpha, zorder=1, n_steps
                         color=color, alpha=alphas[i], 
                         zorder=zorder, linewidth=0, edgecolor='none')
 
-def pareto_frontier_plot(df_all: pd.DataFrame, output_path: str,
-                        x_col: str = "size_millions", 
-                        y_col: str = "Sort Score",
-                        color_col: str = "model_family"):
-    fig, axes = plt.subplots(2, 2, figsize=(16, 10))
-
-    df_all[y_col] = df_all[y_col] * 100
-
-    ontology_to_coords = {
-        "MF": (0,0),
-        "CC": (0,1),
-        "BP": (1,0),
-        "DEEPLOC": (1,1)
-    }
-    
-    frontier_line_color = "#e74c3c"
-    frontier_bg_color = "#ea9999"
-    bg_color = "#FCFBF9"
-    fig.patch.set_facecolor(bg_color)
-
-    global_top_y = df_all[y_col].max() + 1.5
-    global_bottom_y = df_all[y_col].min() - 1.5
-    global_y_range = global_top_y - global_bottom_y
-
-    for ont, ax_coords in ontology_to_coords.items():
-        df = df_all[df_all["ontology"] == ont]
-        ax = axes[ax_coords[0], ax_coords[1]]
-        ax.set_facecolor(bg_color)
-        ax.spines['top'].set_visible(False)
-        ax.spines['right'].set_visible(False)
-        ax.yaxis.grid(True, linestyle='-', which='major', 
-            color='lightgrey', alpha=0.7)
-        ax.set_axisbelow(True)
-
-        y_min = df[y_col].min() - (df[y_col].max() - df[y_col].min()) * 0.1
-        
-        # Set the drop height to exactly 50% of the Y-axis range so it fades out completely mid-air
-        y_range = df[y_col].max() - df[y_col].min()
-        gradient_drop = y_range * 0.50
-
-        # --- 1. Compute and Plot the Global Frontier ---
-        frontier_df = get_convex_pareto_frontier(df, x_col, y_col)
-        
-        ax.plot(frontier_df[x_col], frontier_df[y_col]-0.0005, 
-                color=frontier_line_color, linestyle="--", linewidth=5,
-                 label="Efficiency Frontier", zorder=2)
-        
-        # EXCLUSIVELY use the gradient fill. The static flat-bottom fill_between has been deleted.
-        add_gradient_fill(ax, frontier_df[x_col], frontier_df[y_col]-0.0005, 
-                        color=frontier_bg_color, drop_height=gradient_drop, max_alpha=0.45, zorder=1)
-
-        # --- 2. Plot all models individually by family ---
-        groups = df.groupby(color_col)
-        
-        for name, group in groups:
-            marker = MARKER_MAP.get(name.lower(), "o")
-            group = group.sort_values(by=x_col)
-            
-            line, = ax.plot(group[x_col], group[y_col], label=name.upper(), 
-                            marker=marker, markersize=9, linewidth=2, zorder=3)
-            
-            # Add the parallel gradient for the individual lines, making it slightly shorter so it doesn't clutter
-            add_gradient_fill(ax, group[x_col], group[y_col], 
-                            color=line.get_color(), drop_height=gradient_drop * 0.6, max_alpha=0.15, zorder=1)
-            
-            for i, row in group.iterrows():
-                pos_dot = (row[x_col], row[y_col])
-                
-                is_frontier = (row['model_name'] in frontier_df['model_name'].values)
-                y_offset = 12 if is_frontier else 8
-                
-                ax.annotate(row["pretty_name"], pos_dot, 
-                            xytext=(0, y_offset), textcoords="offset points", 
-                            fontsize=9, color="#333333",
-                            ha='center', va='bottom', zorder=4,
-                            path_effects=[pe.withStroke(linewidth=3, foreground=bg_color)])
-        if ont == "DEEPLOC":
-            ax.legend(frameon=False, loc="lower right")
-        ax.set_title(ont, pad=15, fontsize=14)
-        
-        ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
-    # Sup-labels with explicit position coordinates to push them outward
-    fig.supylabel("Overall Score (%)", fontweight='bold', color='#444444', x=0.015)
-    fig.supxlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444', y=0.02)
-    
-    # Adjust layout padding so the outward-pushed labels don't get cropped
-    fig.tight_layout(rect=[0.02, 0.02, 1, 1])
-    fig.savefig(output_path, dpi=400, facecolor=bg_color)
-
 def pareto_frontier_oneplot(df: pd.DataFrame,
                             ax: plt.Axes,
                             x_col: str = "size_millions", 
@@ -329,18 +240,18 @@ def pareto_frontier_oneplot(df: pd.DataFrame,
             
             ax.annotate(row["pretty_name"], pos_dot, 
                         xytext=(0, y_offset), textcoords="offset points", 
-                        fontsize=9 if is_frontier else 8,
+                        fontsize=8 if is_frontier else 8,
                         color="#333333",
                         ha='center', va='bottom', zorder=5 if is_frontier else 4,
                         fontweight="bold" if is_frontier else "normal",
                         alpha=0.8 if is_frontier else 0.95,
                         path_effects=[pe.withStroke(linewidth=2, foreground=bg_color)])
             
-    ax.legend(frameon=False, loc="lower right")
+    ax.legend(frameon=False, loc="lower right", fontsize=8)
     ax.set_ylim(bottom=global_bottom_y, top=global_top_y)
     
-    ax.set_ylabel(f"Overall Score (%)", fontweight='bold', color='#444444')
-    ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444')
+    ax.set_ylabel(f"Overall Score (%)", fontweight='bold', color='#444444', fontsize=10)
+    ax.set_xlabel("Model Size (millions of parameters)", fontweight='bold', color='#444444', fontsize=10)
     
     # Use ScalarFormatter on a log scale to safely show 500, 1000 instead of 10^x
     #ax.set_xscale("log")
@@ -418,13 +329,16 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
     mask_scores[:, :2] = True      # Hide the dimension columns
     
     # Plot Dimensions with a neutral/different colormap (e.g., 'bone_r', 'Blues', 'Greys')
-    sns.heatmap(normalized_df, 
+    
+    g1 = sns.heatmap(normalized_df, 
                 annot=annot_array, fmt="", cmap="flare",          
                 linewidths=3, linecolor='white', cbar=False, 
                 mask=mask_dimensions, ax=ax)
+    
+    #g1.set_xticklabels(g1.get_xmajorticklabels(), fontsize = 10)
 
     # Plot Scores with Viridis
-    sns.heatmap(normalized_df, 
+    g2 = sns.heatmap(normalized_df, 
                 annot=annot_array, fmt="", cmap="viridis",          
                 linewidths=3, linecolor='white', cbar=False, 
                 mask=mask_scores, ax=ax)
@@ -434,10 +348,10 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
     ax.set_xlabel("")
     
     #ax.xaxis.tick_top()
-    ax.tick_params(axis='x', rotation=0, labelsize=9.5, labelcolor='black', length=0)
+    ax.tick_params(axis='x', rotation=0, labelsize=8, labelcolor='black', length=0)
     
     # --- NEW: Reduced font size to 9.5 and increased padding to 12 to prevent overlap ---
-    ax.tick_params(axis='y', rotation=0, labelsize=9.5, labelcolor='black', length=0, pad=12)
+    ax.tick_params(axis='y', rotation=0, labelsize=8, labelcolor='black', length=0, pad=12)
 
     # 7. Add grouping brackets and labels below the x-axis using TextPath
     def add_stretched_brace(ax, x_center, x_width, y_pos, text_label, y_text_offset):
@@ -478,37 +392,25 @@ def plot_benchmark_heatmap(df_all: pd.DataFrame, ax: plt.Axes, y_col: str = "Sor
         
         # 6. Add the label below the brace
         ax.text(x_center, y_pos + y_text_offset, text_label, ha='center', va='top', 
-                fontsize=11, fontfamily="FreeSerif", color="#111111",
+                fontsize=10, fontfamily="FreeSerif", color="#111111",
                 transform=ax.get_xaxis_transform())
 
     # --- 1st Bracket: Model Dimensions ---
     # Center is at x=1.0. We set the width to 1.9 to leave a tiny gap at the edges of the 2 columns.
-    add_stretched_brace(ax, x_center=1.0, x_width=1.7, y_pos=-0.08, 
+    add_stretched_brace(ax, x_center=1.0, x_width=1.7, y_pos=-0.12, 
                         text_label="Model Dimensions", y_text_offset=-0.018)
 
     # --- 2nd Bracket: Task-Specific Scores ---
     # Center is at x=4.0. We set the width to 3.9 so it perfectly blankets the 4 columns.
-    add_stretched_brace(ax, x_center=4.0, x_width=3.7, y_pos=-0.08, 
+    add_stretched_brace(ax, x_center=4.0, x_width=3.7, y_pos=-0.12, 
                         text_label="Task-specific Scores", y_text_offset=-0.018)
 
 
-def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
+def pareto_heatmap_combined_plot(df_all: pd.DataFrame, ax_scatter: plt.Axes, ax_heatmap: plt.Axes,
                                  x_col: str = "size_millions", 
                                  y_col: str = "Sort Score",
                                  color_col: str = "model_family"):
-    """Main wrapper function to generate a 1x2 figure with scatter and heatmap."""
-    bg_color = "#FCFBF9"
-    
-    # 1. Setup Figure and GridSpec
-    fig = plt.figure(figsize=(16, 7))
-    fig.patch.set_facecolor(bg_color)
-    
-    # --- NEW: Increased wspace from 0.15 to 0.28 to push the heatmap further right ---
-    gs = gridspec.GridSpec(1, 2, width_ratios=[1.3, 1], wspace=0.28)
-    ax_scatter = fig.add_subplot(gs[0])
-    ax_heat = fig.add_subplot(gs[1])
-
-    # 2. Aggregate data elegantly using pandas groupby instead of a manual loop
+    df_all[y_col] = df_all[y_col] * 100
     df_agg = df_all.groupby(["model_name", "pretty_name", color_col], as_index=False)[[x_col, y_col]].mean()
     print('In pareto frontier:')
     for _, row in df_agg.iterrows():
@@ -522,32 +424,14 @@ def pareto_heatmap_combined_plot(df_all: pd.DataFrame, output_path: str,
                             global_top_y=global_top_y, global_bottom_y=global_bottom_y, 
                             bg_color=bg_color)
     
-    plot_benchmark_heatmap(df_all, ax_heat, y_col=y_col)
+    plot_benchmark_heatmap(df_all, ax_heatmap, y_col=y_col)
 
-    ax_scatter.set_title("Efficiency Frontier of PLMs", fontsize=14, weight='bold')
-    ax_heat.set_title("Heatmap of Task-Specific Scores", fontsize=14, weight='bold')
+    ax_scatter.set_title("B: Efficiency Frontier of PLMs", fontsize=12, weight='bold')
+    ax_heatmap.set_title("C: Model Dimensions and Task-Specific Scores", fontsize=12, weight='bold')
 
-    # 4. Finalize and save
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
-    fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
-    plt.close(fig)
-
-def plot_cumulative_performance(df_all: pd.DataFrame, output_path: str, y_col: str = "Sort Score"):
-    """Plots the cumulative maximum overall score across hyperparameter tests to show diminishing returns."""
-    bg_color = "#FCFBF9"
-    fig, ax = plt.subplots(figsize=(12, 7))
-    fig.patch.set_facecolor(bg_color)
-    ax.set_facecolor(bg_color)
-    
-    # Clean up axes
-    ax.spines['top'].set_visible(False)
-    ax.spines['right'].set_visible(False)
-    ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
-    ax.xaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
-    ax.set_axisbelow(True)
-
-    # 1. Parse test order to ensure chronological sorting
+def prepare_cumulative_df(df_all: pd.DataFrame, y_col: str = "Sort Score") -> pd.DataFrame:
+    """Pivots and computes per-ontology and overall cumulative maximum scores."""
+        # 1. Parse test order to ensure chronological sorting
     def parse_test_id(val):
         try:
             return int(val)
@@ -556,47 +440,59 @@ def plot_cumulative_performance(df_all: pd.DataFrame, output_path: str, y_col: s
             
     df = df_all.copy()
     df['test_order'] = df['param_comb_id'].apply(parse_test_id)
+
+    optimization_df = []
+    for pretty_name, group_df in df.groupby(by=["pretty_name"]):
+        fam = group_df["model_family"].iloc[0]
+        timeline_sorted = group_df.sort_values(by="test_order")
+        test_orders = timeline_sorted["test_order"].values
+
+        for test_i in test_orders:
+            test_i_df = group_df[group_df["test_order"] <= test_i]
+            mf_val = test_i_df[test_i_df["ontology"] == "MF"][y_col].max()
+            cc_val = test_i_df[test_i_df["ontology"] == "CC"][y_col].max()
+            bp_val = test_i_df[test_i_df["ontology"] == "BP"][y_col].max()
+            dp_val = test_i_df[test_i_df["ontology"] == "DEEPLOC"][y_col].max()
+            optimization_df.append({
+                "pretty_name": pretty_name,
+                "model_family": fam,
+                "test_order": test_i,
+                "MF": mf_val,
+                "CC": cc_val,
+                "BP": bp_val,
+                "DEEPLOC": dp_val,
+                "Sort Score": (mf_val + cc_val + bp_val + dp_val) / 4.0
+            }) 
+    optimization_df = pd.DataFrame(optimization_df)
+    optimization_df.sort_values(by=["pretty_name", "test_order"])
+    return optimization_df
+
+def plot_cumulative_performance(df_all: pd.DataFrame, ax, y_col: str = "Sort Score"):
+    """Plots the cumulative maximum overall score across hyperparameter tests to show diminishing returns."""
+    optimization_df = prepare_cumulative_df(df_all, y_col)
+
+    #bg_color = "#FCFBF9"
+    #fig, ax = plt.subplots(figsize=(8, 5))
+    #fig.patch.set_facecolor(bg_color)
+    #ax.set_facecolor(bg_color)
     
-    # 2. Pivot the data so each row is a specific parameter configuration, 
-    # and the columns are the scores for the 4 ontologies.
-    pivot_df = df.pivot_table(
-        index=['pretty_name', 'model_family', 'param_comb_id', 'test_order'],
-        columns='ontology',
-        values=y_col,
-        aggfunc='first'
-    ).reset_index()
-    
-    # Sort chronologically by the parameter combination IDs
-    pivot_df = pivot_df.sort_values(by=["pretty_name", "test_order"])
-    
-    # 3. Calculate Cumulative Max per Ontology Independently
-    ontologies = ["MF", "CC", "BP", "DEEPLOC"]
-    existing_onts = [o for o in ontologies if o in pivot_df.columns]
-    
-    for ont in existing_onts:
-        # If a test crashed/OOM'd (<0) or wasn't evaluated for an ontology (NaN), treat its score as 0
-        pivot_df[ont] = pivot_df[ont].apply(lambda x: x if x >= 0 else 0).fillna(0)
-        
-        # Calculate the highest score seen *so far* for this specific ontology
-        pivot_df[f"{ont}_cummax"] = pivot_df.groupby("pretty_name")[ont].cummax()
-    
-    # 4. Calculate the Max Overall Score 
-    # This takes the mean of the 4 cumulative maximums, matching the Pareto frontier formula perfectly!
-    cummax_cols = [f"{ont}_cummax" for ont in existing_onts]
-    pivot_df["cummax_score"] = pivot_df[cummax_cols].mean(axis=1) * 100
-    
-    # Test number (X axis) is just the chronological step
-    pivot_df["test_number"] = pivot_df.groupby("pretty_name").cumcount() + 1
+    # Clean up axes
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+    ax.yaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    ax.xaxis.grid(True, linestyle='-', which='major', color='lightgrey', alpha=0.7)
+    ax.set_axisbelow(True)
     
     # 5. Plot each PLM's cumulative performance
-    families = pivot_df["model_family"].unique()
+    families = optimization_df["model_family"].unique()
     cmap = sns.color_palette("deep", len(families))
     color_dict = dict(zip(families, cmap))
     
-    for name, group in pivot_df.groupby("pretty_name"):
+    for name, group in optimization_df.groupby("pretty_name"):
+        pretty_name = name[0]
         fam = group["model_family"].iloc[0]
-        x = group["test_number"].values
-        y = group["cummax_score"].values
+        x = group["test_order"].values
+        y = group["Sort Score"].values * 100
         marker = MARKER_MAP.get(fam.lower(), "o")
         
         # Main cumulative line
@@ -606,33 +502,33 @@ def plot_cumulative_performance(df_all: pd.DataFrame, output_path: str, y_col: s
         ax.plot(x[-1], y[-1], marker=marker, color=color_dict[fam], markersize=9, zorder=4)
         
         # Label the end of the line elegantly
-        ax.annotate(name, 
+        ax.annotate(pretty_name, 
                     (x[-1], y[-1]), 
                     xytext=(8, 0), 
                     textcoords="offset points", 
-                    fontsize=9, 
+                    fontsize=8, 
                     va='center', 
                     color="#333333",
                     path_effects=[pe.withStroke(linewidth=3, foreground=bg_color)])
                     
     # 6. Format axes
-    ax.set_xlabel("Number of Parameter Configurations Evaluated", fontweight='bold', color='#444444', fontsize=11, labelpad=12)
-    ax.set_ylabel("Max Overall Score Seen So Far (%)", fontweight='bold', color='#444444', fontsize=11, labelpad=12)
-    ax.set_title("Progress of GBDT Classifier Parameter Optimization", fontsize=15, weight='bold', pad=20)
+    ax.set_xlabel("Number of Parameter Configurations Evaluated", fontweight='bold', color='#444444', fontsize=10, labelpad=12)
+    ax.set_ylabel("Max Overall Score Seen So Far (%)", fontweight='bold', color='#444444', fontsize=10, labelpad=12)
+    ax.set_title("A: Timeline of GBDT Classifier Parameter Optimization", fontsize=12, weight='bold', pad=20)
     
     # 7. Custom Legend for Families
     handles = [plt.Line2D([0], [0], color=color_dict[f], marker=MARKER_MAP.get(f.lower(), "o"), 
                           lw=3, markersize=8, label=f.upper()) for f in families]
-    ax.legend(handles=handles, frameon=False, loc="lower right", title="Model Family", title_fontproperties={'weight':'bold'})
+    ax.legend(handles=handles, frameon=False, loc="lower right", title="Model Family", title_fontproperties={'weight':'bold'}, fontsize=8)
     
     # 8. Expand X limit to fit annotations on the right side
-    max_x = pivot_df["test_number"].max()
-    ax.set_xlim(0, max_x + (max_x * 0.2)) # Gives 20% horizontal breathing room for text labels
+    max_x = optimization_df["test_order"].max()
+    ax.set_xlim(0, max_x + (max_x * 0.12)) # Gives 12% horizontal breathing room for text labels
     
-    fig.tight_layout()
-    fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
-    fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
-    plt.close(fig)
+    #fig.tight_layout()
+    #fig.savefig(output_path, dpi=400, facecolor=bg_color, bbox_inches='tight')
+    #fig.savefig(output_path.replace('.png', '.svg'), dpi=400, facecolor=bg_color, bbox_inches='tight')
+    #plt.close(fig)
 
 if __name__ == "__main__":
     MAX_TEST = 64
@@ -694,7 +590,7 @@ if __name__ == "__main__":
                 if f"param_ntrees" in ont_row and ntrees_exact is not None:
                     if ntrees_exact < ont_row["param_ntrees"]:
                         x = ont_row["param_ntrees"]
-                        print(f"Less trees than max: {ntrees_exact} < {x} in {model_dir_raw}")
+                        #print(f"Less trees than max: {ntrees_exact} < {x} in {model_dir_raw}")
                     ont_row["param_ntrees_max"] = ont_row["param_ntrees"]
                     ont_row["param_ntrees"] = ntrees_exact
                 else:
@@ -748,10 +644,53 @@ if __name__ == "__main__":
     df_best = pd.DataFrame(df_best)
     df_best = df_best.sort_values(by="Sort Score", ascending=False)
     df_best.to_csv(f"{benchmarking_dir}/results_best_overall.tsv", sep="\t", index=False)
-    pareto_frontier_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall.png", y_col="Sort Score")
-    pareto_heatmap_combined_plot(df_best, f"{benchmarking_dir}/pareto_frontier_overall_combined.png", y_col="Sort Score")
     
-    plot_cumulative_performance(df, f"{benchmarking_dir}/cumulative_performance.png", y_col="Sort Score")
+    bg_color = "#FCFBF9"
+    fig = plt.figure(figsize=(13, 8.5), facecolor=bg_color)
+
+    # Outer 2-row grid
+    outer_gs = gridspec.GridSpec(
+        2, 1, figure=fig, height_ratios=[0.8, 1], hspace=0.32
+    )
+
+    # Row 1: 2 columns with 40% / 60% width ratio for B and C
+    gs_top = gridspec.GridSpecFromSubplotSpec(
+        1, 1, subplot_spec=outer_gs[0], wspace=0.025
+    )
+    ax_a = fig.add_subplot(gs_top[0, 0])
+
+    # Row 2: 2 equal columns for Pareto Frontier and  Heatmap
+    gs_bottom = gridspec.GridSpecFromSubplotSpec(
+        1, 2, subplot_spec=outer_gs[1], wspace=0.28, width_ratios=[5.5, 4.5]
+    )
+    axes_bottom = [fig.add_subplot(gs_bottom[0, i]) for i in range(2)]
+    ax_b = axes_bottom[0]
+    ax_c = axes_bottom[1]
+
+    plot_cumulative_performance(df, ax_a, y_col="Sort Score")
+    pareto_heatmap_combined_plot(df_best, ax_b, ax_c, y_col="Sort Score")
+
+    fig.savefig(
+        os.path.join(benchmarking_dir, "plm_benchmarking_panel.png"),
+        dpi=400,
+        facecolor=bg_color,
+        bbox_inches="tight",
+    )
+    fig.savefig(
+        os.path.join(benchmarking_dir, "plm_benchmarking_panel_light.png"),
+        dpi=140,
+        facecolor=bg_color,
+        bbox_inches="tight",
+    )
+    fig.savefig(
+        os.path.join(benchmarking_dir, "plm_benchmarking_panel.svg"),
+        dpi=400,
+        facecolor=bg_color,
+        bbox_inches="tight",
+    )
+    plt.close(fig)
+    
+    
     cols_simple = ["original_name", "size_millions", "embed_width", "Input Width", "model_family", "ontology", "Sort Score", 
         "Success Rate", "param_comb_id", "forest_complexity_index", "param_ntrees", "parameters"]
     cols_simple2 = ["original_name", "size_millions", "embed_width", "Input Width", "model_family", "ontology", "Sort Score", 
