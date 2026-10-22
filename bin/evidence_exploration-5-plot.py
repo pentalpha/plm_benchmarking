@@ -1,6 +1,7 @@
 import sys
 import os
 import json
+from collections import Counter
 
 import matplotlib.ticker as mtick
 import matplotlib.pyplot as plt
@@ -111,7 +112,7 @@ def get_evi_tsne_coords(
         is_mf = 1 if "MF" in row["Ontology"] else 0
         is_bp = 1 if "BP" in row["Ontology"] else 0
         is_cc = 1 if "CC" in row["Ontology"] else 0
-        vals = alg_cols + [is_mf, is_bp, is_cc] + [params_dict.get(name, -1) for name in all_names]
+        vals = [params_dict.get(name, -1) for name in all_names]
         params_matrix.append(vals)
     print([len(r) for r in params_matrix])
     params_matrix = np.array(params_matrix)
@@ -143,6 +144,8 @@ def plot_scatter(
     title,
     marker_col="Ontology",
     marker_map=MARKER_MAP,
+    perc_x = None,
+    perc_y = None
 ):
     """
     Plots OWA vs CWA metric scatter points encoded by Strategy (color),
@@ -178,7 +181,7 @@ def plot_scatter(
             marker=marker_map[marker_val],
         )
 
-    # 2. Top-performing configurations (foreground layer with white halo + black outline)
+    '''# 2. Top-performing configurations (foreground layer with white halo + black outline)
     df_top = df[df["is_top_performance"]]
     for marker_val, group_df in df_top.groupby(marker_col, sort=False):
         if group_df.empty:
@@ -208,7 +211,16 @@ def plot_scatter(
             linewidths=1.8,
             zorder=6,
             marker=marker,
-        )
+        )'''
+    
+    if perc_x is not None:
+        percx_line_y_start = df[y_col].min()*100
+        percx_line_y_end = df[y_col].max()*100
+        percy_line_x_start = df[x_col].min()*100
+        percy_line_x_end = df[x_col].max()*100
+        
+        ax.plot([perc_x, perc_x], [percx_line_y_start, percx_line_y_end], c="#333333", ls='--', lw=1)
+        ax.plot([percy_line_x_start, percy_line_x_end], [perc_y, perc_y], c="#333333", ls='--', lw=1)
 
     ax.set_xlabel(x_label, fontsize=10, fontweight="bold", color="#333333", labelpad=5)
     ax.set_ylabel(y_label, fontsize=10, fontweight="bold", color="#333333", labelpad=5)
@@ -217,7 +229,7 @@ def plot_scatter(
     ax.margins(0.06)
 
 
-def plot_metrics_from_df(df, results_dir):
+def plot_metrics_from_df(df, results_dir, percentiles=None):
     plot_defs = [
         [
             {
@@ -234,10 +246,8 @@ def plot_metrics_from_df(df, results_dir):
                 "y": "CAFA AUPRC",
                 "ylabel": "CWA AUPRC (%)",
                 "c": "AlgColors",
-                "title": "B: Area Under Precision-Recall Curve (AUPRC)",
+                "title": "Individual Metrics:\n\nB: Area Under Precision-Recall Curve (AUPRC)",
             },
-        ],
-        [
             {
                 "x": "OWA Fmax (Inverse-Weighted)",
                 "xlabel": "OWA Fmax (%)",
@@ -246,13 +256,35 @@ def plot_metrics_from_df(df, results_dir):
                 "c": "AlgColors",
                 "title": "C: Maximum F-Measure (Fmax)",
             },
+        ],
+        [
+            
             {
                 "x": "OWA Score",
                 "xlabel": "Avg. OWA (%)",
                 "y": "CWA Score",
                 "ylabel": "Avg. CWA (%)",
                 "c": "AlgColors",
-                "title": "D: Overall OWA vs. CWA Trade-off",
+                "title": "D: Molecular Function (MF)",
+                "single_ont": "MF"
+            },
+            {
+                "x": "OWA Score",
+                "xlabel": "Avg. OWA (%)",
+                "y": "CWA Score",
+                "ylabel": "Avg. CWA (%)",
+                "c": "AlgColors",
+                "title": "Overall CWA vs OWA Trade-off:\n\nE: Biological Process (BP)",
+                "single_ont": "BP"
+            },
+            {
+                "x": "OWA Score",
+                "xlabel": "Avg. OWA (%)",
+                "y": "CWA Score",
+                "ylabel": "Avg. CWA (%)",
+                "c": "AlgColors",
+                "title": "F: Cellular Component (CC)",
+                "single_ont": "CC"
             },
         ],
     ]
@@ -261,7 +293,7 @@ def plot_metrics_from_df(df, results_dir):
     df["AlgColors"] = [MARKER_COLOR_MAP[n] for n in df["Algorithm"].tolist()]
 
     bg_color = "#FCFBF9"
-    fig = plt.figure(figsize=(12, 10), facecolor=bg_color)
+    fig = plt.figure(figsize=(16, 10), facecolor=bg_color)
 
     # Outer GridSpec with explicit margins:
     # - top=0.935 brings the legend right up under suptitle
@@ -271,7 +303,7 @@ def plot_metrics_from_df(df, results_dir):
         2, 1,
         figure=fig,
         height_ratios=[0.15, 1.0],
-        hspace=0.08,
+        hspace=0.10,
         top=0.935,
         bottom=0.05,
         left=0.07,
@@ -301,9 +333,11 @@ def plot_metrics_from_df(df, results_dir):
         "BP": "BP (Biological Process)",
         "CC": "CC (Cellular Component)",
     }
-    shape_handles = [
-        Line2D([0], [0], color="none", label="Ontology (Shape):"),
-    ] + [
+    shape_handles = (
+        [
+    #    Line2D([0], [0], color="none", label="Ontology (Shape):"),
+    #] + [
+        
         Line2D(
             [0], [0],
             marker=marker,
@@ -315,8 +349,22 @@ def plot_metrics_from_df(df, results_dir):
             markersize=8,
         )
         for ont, marker in MARKER_MAP.items()
-    ]
+        ]
+        +
+        [
+            #Explain percentile line: c="#333333", ls='--'
+            Line2D(
+                [0], [0],
+                color="#333333",
+                ls='--',
+                lw=1,
+                label="Percentile 95"
+            )
+        ]
+    )
 
+    '''
+    not_used anymore
     # Row 3: Selection / Top-Performing Outline
     sel_handles = [
         Line2D([0], [0], color="none", label="Selection (Outline):"),
@@ -341,12 +389,12 @@ def plot_metrics_from_df(df, results_dir):
             markeredgewidth=1.8,
             markersize=10.5,
         ),
-    ]
+    ]'''
 
     legend_rows = [
         (color_handles, "upper center", (0.5, 1.00)),
         (shape_handles, "center",       (0.5, 0.50)),
-        (sel_handles,   "lower center", (0.5, 0.00)),
+        #(sel_handles,   "lower center", (0.5, 0.00)),
     ]
 
     for handles, loc, bbox in legend_rows:
@@ -374,7 +422,7 @@ def plot_metrics_from_df(df, results_dir):
         n_plot_rows,
         n_plot_cols,
         subplot_spec=outer_gs[1],
-        hspace=0.30,
+        hspace=0.39,
         wspace=0.20,
     )
 
@@ -394,16 +442,29 @@ def plot_metrics_from_df(df, results_dir):
                 df[c_col] = color_strs
             else:
                 c_col = plot_dict["c"]
+            
+            ont = plot_dict.get("single_ont", None)
+            if ont:
+                df_fil = df[df["Ontology"] == ont]
+                percs = percentiles[ont]
+                perc_x = percs[plot_dict["x"]]["value"]*100
+                perc_y = percs[plot_dict["y"]]["value"]*100
+            else:
+                df_fil = df
+                perc_x = None
+                perc_y = None
 
             plot_scatter(
                 ax,
-                df,
+                df_fil,
                 x_col=plot_dict["x"],
                 y_col=plot_dict["y"],
                 c_col=c_col,
                 x_label=plot_dict["xlabel"],
                 y_label=plot_dict["ylabel"],
                 title=plot_dict["title"],
+                perc_x=perc_x,
+                perc_y=perc_y,
             )
 
     fig.suptitle(
@@ -833,6 +894,55 @@ def norm_scores(df, score_cols = ["Sort Score", "OWA Score", "CWA Score"]):
 
     return df_norm, min_values, max_values
 
+def find_top_percentile(df, score_cols = ["Sort Score", "OWA Score", "CWA Score"], percentile=0.95):
+    """
+    Find the percentile-th configuration for each ontology
+    """
+    percentiles = {"MF": {}, "BP": {}, "CC": {}}
+    ont_dfs = []
+    for ont in percentiles.keys():
+        ont_df = df[df["Ontology"] == ont].copy()
+        for col in score_cols:
+            value = ont_df[col].quantile(percentile)
+            maximum = ont_df[col].max()
+            percentiles[ont][col] = {"value": value, "max": maximum}
+        
+        for col in score_cols:
+            ont_df[f"in_{col}_top"] = ont_df[col] >= percentiles[ont][col]["value"]
+        ont_dfs.append(ont_df)
+    
+    with_percs_df = pd.concat(ont_dfs)
+
+    best_performance_df = []
+    for ont in percentiles.keys():
+        new_row = {"Ontology": ont}
+        ont_df = with_percs_df[with_percs_df["Ontology"] == ont]
+        for col in score_cols:
+            in_top_perc_df = ont_df[ont_df[f"in_{col}_top"]]
+            algorithms_list = in_top_perc_df["Algorithm"].to_list()
+            total = len(algorithms_list)
+            freqs = Counter(algorithms_list)
+            freqs = [(n, v) for n, v in freqs.items()]
+            freqs.sort(key=lambda x: x[1], reverse=True)
+            mode, mode_freq = freqs[0]
+            new_row[f"{col}_mode"] = mode
+            new_row[f"{col}_mode_freq"] = mode_freq
+            new_row[f"{col}_mode_perc"] = round(mode_freq / total * 100)
+            if len(freqs) > 1:
+                second, second_freq = freqs[1]
+                new_row[f"{col}_second"] = second
+                new_row[f"{col}_second_freq"] = second_freq
+                new_row[f"{col}_second_perc"] = round(second_freq / total * 100)
+            else:
+                new_row[f"{col}_second"] = None
+                new_row[f"{col}_second_freq"] = 0
+            new_row[f"{col}_perc95_value"] = percentiles[ont][col]["value"]
+            new_row[f"{col}_max_value"] = percentiles[ont][col]["max"]
+        best_performance_df.append(new_row)
+    best_performance_df = pd.DataFrame(best_performance_df)
+    
+    return with_percs_df, best_performance_df, percentiles
+
 def annotate_tsne_clusters(
     ax,
     df,
@@ -859,6 +969,10 @@ def annotate_tsne_clusters(
     }
 
     for alg_name, group_df in df.groupby(cluster_col, sort=False):
+
+        #outline spots with algorithm color
+        alg_color = MARKER_COLOR_MAP.get(alg_name, "#444444")
+
         if group_df.empty:
             continue
 
@@ -870,9 +984,11 @@ def annotate_tsne_clusters(
         y_top = np.max(y_vals)
         y_bot = np.min(y_vals)
 
+        label_text = DISPLAY_NAMES.get(alg_name, alg_name)
+
         # Se o cluster estiver na faixa inferior (y < -15), coloca o rótulo embaixo;
         # caso contrário, coloca logo acima do topo do cluster.
-        if cy < -15:
+        if cy < -15 or label_text == "Cond. Negatives":
             label_y = y_bot - 6.5
             va = "top"
             anchor_y = y_bot
@@ -881,8 +997,7 @@ def annotate_tsne_clusters(
             va = "bottom"
             anchor_y = y_top
 
-        edge_color = MARKER_COLOR_MAP.get(alg_name, "#444444")
-        label_text = DISPLAY_NAMES.get(alg_name, alg_name)
+        
 
         # Linha conectora sutil entre a borda do cluster e a etiqueta
         ax.plot(
@@ -908,11 +1023,27 @@ def annotate_tsne_clusters(
             bbox=dict(
                 boxstyle="round,pad=0.1",
                 facecolor="#FFFFFF",
-                edgecolor=edge_color,
+                edgecolor=alg_color,
                 linewidth=0.5,
                 alpha=0.6,
             ),
         )
+
+        '''#Plotar circulo com bordas semi-transparentes e sem preenchimento, 
+        #com o ponto central do cluster e raio, centralizado no centro do cluster
+        ratius = min(max((max(x_vals) - cx), (cx - min(x_vals))), max((max(y_vals) - cy), (cy - min(y_vals)))) * 0.8
+        circle = mpatches.Circle(
+            (
+                np.median(x_vals),
+                np.median(y_vals)
+            ),
+            radius=ratius,
+            edgecolor=edge_color,
+            facecolor="none",
+            alpha=0.6,
+            zorder=8,
+        )
+        ax.add_patch(circle)'''
 
 def plot_scatter_tsne(
     ax,
@@ -949,25 +1080,31 @@ def plot_scatter_tsne(
     is_numeric_c = pd.api.types.is_numeric_dtype(df[c_col])
     cmap_kwargs = {"cmap": cmap, "vmin": 0.0, "vmax": 100.0} if is_numeric_c else {}
     # 1. Non-top configurations (background layer)
-    df_bg = df[~df["is_top_performance"]]
-    for marker_val, group_df in df_bg.groupby(marker_col, sort=False):
-        print(group_df[c_col])
-        if group_df.empty:
-            continue
+    #df_bg = df[~df["is_top_performance"]]
+    df_sorted = df.sort_values(by=c_col, ascending=True)
+    for alg_name in df_sorted["Algorithm"].unique():
+        df_alg = df_sorted[df_sorted["Algorithm"] == alg_name]
+        
+        alg_color = MARKER_COLOR_MAP.get(alg_name, "#444444")
+        alg_marker = STR_MARKER_MAP.get(alg_name)
+        
+        '''for marker_val, group_df in df_alg.groupby(marker_col, sort=False):
+            if group_df.empty:
+                continue'''
         ax.scatter(
-            group_df[x_col] * multi,
-            group_df[y_col] * multi,
-            c=group_df[c_col],
-            s=55,
-            alpha=0.68,
-            edgecolors="#333333",
-            linewidths=0.3,
+            df_alg[x_col] * multi,
+            df_alg[y_col] * multi,
+            c=df_alg[c_col],
+            s=75,
+            alpha=0.6,
+            edgecolors=alg_color,
+            linewidths=1.6,
             zorder=3,
-            marker=marker_map[marker_val],
+            marker=alg_marker,
             **cmap_kwargs,
         )
 
-    # 2. Top-performing configurations (foreground layer with white halo + black outline)
+    '''# 2. Top-performing configurations (foreground layer with white halo + black outline)
     df_top = df[df["is_top_performance"]]
     for marker_val, group_df in df_top.groupby(marker_col, sort=False):
         if group_df.empty:
@@ -998,7 +1135,7 @@ def plot_scatter_tsne(
             zorder=6,
             marker=marker,
             **cmap_kwargs,
-        )
+        )'''
 
     sm = plt.cm.ScalarMappable(
         norm=plt.Normalize(vmin=0.0, vmax=100.0),
@@ -1013,8 +1150,13 @@ def plot_scatter_tsne(
     cbar.set_ticks(tick_locs)
     cbar.set_ticklabels([f"{v:.1f}%" for v in tick_vals])
 
+    if c_col == "Sort Score":
+        cbar_label = "Overall Score (%)"
+    else:
+        cbar_label = f"{c_col} (%)"
+
     cbar.set_label(
-        "Score Value (%)",
+        cbar_label,
         fontsize=10,
         fontweight="bold",
         color="#333333",
@@ -1037,7 +1179,7 @@ def plot_scatter_tsne(
 
 def plot_optimization_fig(df, df_best_recalc, evi_exp_res_dir):
     bg_color = "#FCFBF9"
-    cmap_name = "viridis"
+    cmap_name = "Greys"
     fig = plt.figure(figsize=(16, 13.0), facecolor=bg_color)
 
     gs_main = gridspec.GridSpec(
@@ -1087,7 +1229,7 @@ def plot_optimization_fig(df, df_best_recalc, evi_exp_res_dir):
         c_col="OWA Score",
         x_label="TSNE Dimension 1",
         y_label="TSNE Dimension 2",
-        title="C: Avg. OWA of\nCandidate Parameter Configurations",
+        title="B2: Avg. OWA of\nCandidate Parameter Configurations",
         cmap=cmap_name,
         vmin=min_scores["OWA Score"],
         vmax=max_scores["OWA Score"],
@@ -1101,7 +1243,7 @@ def plot_optimization_fig(df, df_best_recalc, evi_exp_res_dir):
         c_col="Sort Score",
         x_label="TSNE Dimension 1",
         y_label="TSNE Dimension 2",
-        title="D: Overall Score of\nCandidate Parameter Configurations",
+        title="B3: Overall Score of\nCandidate Parameter Configurations",
         cmap=cmap_name,
         vmin=min_scores["Sort Score"],
         vmax=max_scores["Sort Score"],
@@ -1112,7 +1254,7 @@ def plot_optimization_fig(df, df_best_recalc, evi_exp_res_dir):
         "BP": "Biological Process",
         "CC": "Cellular Component",
     }
-    legend_handles = (
+    '''legend_handles = (
         [Line2D([0], [0], color="none", label="Ontology (Shape):")]
         + [
             Line2D(
@@ -1168,7 +1310,7 @@ def plot_optimization_fig(df, df_best_recalc, evi_exp_res_dir):
         columnspacing=1.2,
     )
     leg.get_texts()[0].set_fontweight("bold")
-    leg.get_texts()[4].set_fontweight("bold")
+    leg.get_texts()[4].set_fontweight("bold")'''
 
     fig.savefig(
         os.path.join(evi_exp_res_dir, "optimization_fig_small.png"),
@@ -1223,7 +1365,33 @@ if __name__ == "__main__":
     df = pd.concat(df_alls)
     df.to_csv(os.path.join(evi_exp_res_dir, "evi_rep-all_tests.tsv"), sep="\t", index=False)
 
-    plot_metrics_from_df(df, evi_exp_res_dir)
+    df_with_percs, df_best_performance, percentiles = find_top_percentile(df, percentile=0.9)
+    df_with_percs.to_csv(os.path.join(evi_exp_res_dir, "evi_rep-with_percs.tsv"), sep="\t", index=False)
+    df_best_performance.to_csv(os.path.join(evi_exp_res_dir, "evi_rep-best_performance.tsv"), sep="\t", index=False)
+    with open(os.path.join(evi_exp_res_dir, "evi_rep-percentiles.json"), "w") as f:
+        json.dump(percentiles, f, indent=4)
+    for _, row in df_best_performance.iterrows():
+        print({k: v for k, v in row.items()})
+    df_best_performance_manuscript = []
+    for _, row in df_best_performance.iterrows():
+        
+        for criteria in ["Sort Score", "OWA Score", "CWA Score"]:
+            if criteria == "Sort Score":
+                col_final = "Overall Score"
+            else:
+                col_final = criteria
+            new_row = {"Task": row["Ontology"], "Criteria": col_final}
+            new_row["Mode"] = f"{row[criteria + '_mode']} ({row[criteria + '_mode_perc']}%)"
+            new_row["2nd Most Freq."] = f"{row[criteria + '_second']} ({row[criteria + '_second_perc']}%)"
+            min_perc = round(row[f'{criteria}_perc95_value']*100, 2)
+            max_perc = round(row[f'{criteria}_max_value']*100, 2)
+            new_row[f"Range of Values in Perc95"] = f"{min_perc}% - {max_perc}%"
+            df_best_performance_manuscript.append(new_row)
+    
+    df_best_performance_manuscript = pd.DataFrame(df_best_performance_manuscript)
+    df_best_performance_manuscript.to_csv(os.path.join(evi_exp_res_dir, "evi_rep-best_performance_manuscript.tsv"), sep="\t", index=False)
+
+    plot_metrics_from_df(df, evi_exp_res_dir, percentiles=percentiles)
 
     # Also save an overall summary table averaged across ontologies (MF, BP, CC)
     # so the table can be compared 1-to-1 against the overall cumulative performance plot.
