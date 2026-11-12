@@ -3,7 +3,7 @@ N_COMBINATIONS=36
 N_TARGETS=32
 MIN_ANNOTATIONS=120
 MAX_TRAIN_PROTEINS=80000
-FEATURES_DESC="input_data/emb.ankh_base.parquet:mean"
+FEATURES_DESC="input_data/emb.ankh_base_mean.parquet:mean"
 BASE_RESULTS_DIR="outputs/evidence_exploration_npad"
 
 # Initialize conda and activate the Py-Boost environment
