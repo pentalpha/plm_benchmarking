@@ -1,5 +1,6 @@
 import os
 import sys
+from itertools import combinations
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -8,13 +9,12 @@ from scipy import stats
 import openpyxl
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from sklearn.ensemble import RandomForestRegressor
-from sklearn.feature_selection import (
-    mutual_info_regression,
-    f_regression,
-    chi2,
-)
-from sklearn.inspection import permutation_importance
+
+try:
+    from mlxtend.frequent_patterns import apriori, association_rules
+    HAS_MLXTEND = True
+except ImportError:
+    HAS_MLXTEND = False
 
 # =============================================================================
 # CONSTANTS & LABEL MAPPINGS
@@ -51,17 +51,14 @@ ONTOLOGY_TITLES = {
     "CC": "Cellular Component (CC)",
 }
 
-GOOD_LEVELS_PERCENTILE = {
-    "VERY_GOOD": 0.9,
-    "GOOD": 0.8,
-    "MODERATE": 0.7,
-}
-
-BAD_LEVELS_PERCENTILE = {
-    "MEDIOCRE": 0.7,
-    "BAD": 0.3,
-    "VERY_BAD": 0.2,
-    "HORRIBLE": 0.1,
+# Simplified, boxplot-aligned quality thresholds on Normalized Sort Score [0, 1]:
+# - ELITE (>= 0.90): Top 10% of the score span (tight peak cluster in boxplots)
+# - GOOD  (>= 0.85): Top 15% of the score span (above the upper quartile of False boxplots)
+# - POOR  (<  0.50): Bottom half of the score span (polarity-inversion failure regime)
+QUALITY_THRESHOLDS = {
+    "ELITE": (">=", 0.90),
+    "GOOD": (">=", 0.85),
+    "POOR": ("<", 0.50),
 }
 
 # Nuclear boolean rules (assigned letters A-H in descending order of overall effect size)
@@ -76,20 +73,17 @@ NUCLEAR_RULE_LETTERS = {
     "random_false_val_lt_conditional_not": "H",
 }
 
-# Logical expressions for composite rules built from nuclear rules A-H
+LETTER_TO_NUCLEAR_COL = {v: k for k, v in NUCLEAR_RULE_LETTERS.items()}
+
+# Logical expressions for the 3 key composite rules (discovered via rule mining on A-H)
 COMPOSITE_RULE_EXPRESSIONS = {
     "soft_tiers_strict_chain": "A ∧ E ∧ H",
     "soft_tiers_2": "B ∧ E ∧ (D ∨ H)",
     "conditional_neg_top_anchor": "B ∧ F ∧ G ∧ H",
+    "strict_4tier": "A ∧ D ∧ H"
 }
 
-# Shades for Panel A (RF Importance & |Spearman r| across MF, BP, CC)
-ONTOLOGY_RF_COLORS = {
-    "MF": "#1b4f72",  # Dark navy blue
-    "BP": "#2e86c1",  # Medium cerulean blue
-    "CC": "#85c1e9",  # Light sky blue
-}
-
+# Shades for Panel A (|Spearman r| across MF, BP, CC)
 ONTOLOGY_SPEARMAN_COLORS = {
     "MF": "#a04000",  # Dark rust orange
     "BP": "#e67e22",  # Medium amber orange
@@ -123,6 +117,7 @@ def parse_label_name(name):
         "soft_tiers_strict_chain": "Soft Tiers: Strict Chain",
         "soft_tiers_2": "Soft Tiers: Relaxed 3-Tier",
         "conditional_neg_top_anchor": "Conditional- Top Neg Anchor",
+        "strict_4tier": "Strict 4-Tier Hierarchy",
         "neg_below_pos": "All Neg. < All Pos.",
         "natural_polarity_split": "All Neg. < 0.50 < All Pos.",
         "pos_to_virtual_margin_relevant": "Margin Between Virt. and Pos. >= 0.13",
@@ -187,20 +182,14 @@ def format_pvalue_rounded(p_val, prefix="p"):
 
 
 def assign_exclusive_quality_tier(row):
-    """Assign each run to its highest/strictest mutually exclusive quality bucket."""
-    if row["VERY_GOOD"]:
-        return "1. VERY_GOOD (>=90th pct)"
+    """Assign each run to its mutually exclusive simplified quality tier."""
+    if row["ELITE"]:
+        return "1. ELITE (Norm >= 0.90)"
     if row["GOOD"]:
-        return "2. GOOD (80th-90th pct)"
-    if row["MODERATE"]:
-        return "3. MODERATE (70th-80th pct)"
-    if row["HORRIBLE"]:
-        return "7. HORRIBLE (<10th pct)"
-    if row["VERY_BAD"]:
-        return "6. VERY_BAD (10th-20th pct)"
-    if row["BAD"]:
-        return "5. BAD (20th-30th pct)"
-    return "4. MEDIOCRE (30th-70th pct)"
+        return "2. GOOD (Norm 0.85-0.90)"
+    if row["POOR"]:
+        return "4. POOR (Norm < 0.50)"
+    return "3. MODERATE (Norm 0.50-0.85)"
 
 
 # =============================================================================
@@ -291,21 +280,27 @@ def plot_soft_label_scatter(df, evi_exp_res_dir, score_cols=None):
 
 
 # =============================================================================
-# 3. FEATURE ENGINEERING (QUALITY TIERS, BOOLEAN PATTERNS & MARGINS)
+# 3. FEATURE ENGINEERING (SIMPLIFIED QUALITY TIERS, NUCLEAR & COMPOSITE RULES)
 # =============================================================================
 def engineer_features(df):
-    """Engineer quality targets, boolean hierarchy patterns, and continuous margins."""
+    """Engineer simplified boxplot-aligned quality tiers, nuclear rules [A]-[H], and margins."""
     target_score_col = "Sort Score Norm" if "Sort Score Norm" in df.columns else "Sort Score"
 
-    for new_col, min_percentile in GOOD_LEVELS_PERCENTILE.items():
-        qt_val = df[target_score_col].quantile(min_percentile)
-        print(f"Percentile for {new_col} (>= {min_percentile}) is {qt_val:.4f}")
-        df[new_col] = df[target_score_col] >= qt_val
-
-    for new_col, max_percentile in BAD_LEVELS_PERCENTILE.items():
-        qt_val = df[target_score_col].quantile(max_percentile)
-        print(f"Percentile for {new_col} (< {max_percentile}) is {qt_val:.4f}")
-        df[new_col] = df[target_score_col] < qt_val
+    print("\n--- Simplified Boxplot-Aligned Quality Tiers (on Normalized Score [0, 1]) ---")
+    for tier_name, (op, thr) in QUALITY_THRESHOLDS.items():
+        if op == ">=":
+            df[tier_name] = df[target_score_col] >= thr
+        else:
+            df[tier_name] = df[target_score_col] < thr
+        cnt_all = int(df[tier_name].sum())
+        cnt_by_ont = {
+            ont: int(df.loc[df["Ontology"] == ont, tier_name].sum())
+            for ont in ONTOLOGIES
+        }
+        print(
+            f"  {tier_name:6s} ({op} {thr:.2f}): Total={cnt_all:3d}/300 ({cnt_all/len(df):.1%}) "
+            f"| MF={cnt_by_ont['MF']:2d}, BP={cnt_by_ont['BP']:2d}, CC={cnt_by_ont['CC']:2d}"
+        )
 
     all_neg_max = df[NEG_LABELS].max(axis=1)
     pos_min = df[POS_LABELS].min(axis=1)
@@ -336,7 +331,7 @@ def engineer_features(df):
     df["conditional_neg_gt_real_neg_median"] = df["conditional_not"] > df["real_neg_median"]  # [G]
     df["random_false_val_lt_conditional_not"] = df["Random False Val"] <= df["conditional_not"]  # [H]
 
-    # Composite soft-tier rules built from nuclear rules [A]-[H]
+    # Composite soft-tier rules (evaluated in Panel B and Table S2, but EXCLUDED from rule mining inputs)
     # 1. Soft Tiers: Strict Chain (A ∧ E ∧ H)
     df["soft_tiers_strict_chain"] = (
         df["neg_below_pos"]
@@ -356,20 +351,15 @@ def engineer_features(df):
         & df["conditional_neg_gt_real_neg_median"]
         & df["random_false_val_lt_conditional_not"]
     )
+    df["strict_4tier"] = (
+        df["neg_below_pos"]
+        & df["virtual_neg_higher"]
+        & df["random_false_val_lt_conditional_not"]
+    )
 
-    bool_pattern_cols = [
-        "soft_tiers_strict_chain",
-        "soft_tiers_2",
-        "conditional_neg_top_anchor",
-        "neg_below_pos",
-        "natural_polarity_split",
-        "pos_to_virtual_margin_relevant",
-        "virtual_neg_higher",
-        "derived_neg_below_virtual_negs",
-        "derived_neg_le_conditional_neg",
-        "conditional_neg_gt_real_neg_median",
-        "random_false_val_lt_conditional_not",
-    ]
+    nuclear_cols = list(NUCLEAR_RULE_LETTERS.keys())
+    composite_cols = list(COMPOSITE_RULE_EXPRESSIONS.keys())
+    bool_pattern_cols = composite_cols + nuclear_cols
 
     cont_engineered_cols = [
         "pos_to_virtual_margin",
@@ -379,10 +369,6 @@ def engineer_features(df):
 
     for col in bool_pattern_cols:
         df[col] = df[col].astype(bool)
-        print(f"Mean for {col}: {df[col].mean():.4f}")
-
-    for col in cont_engineered_cols:
-        print(f"Mean for {col}: {df[col].mean():.4f}")
 
     df["Ontology_Rank"] = (
         df.groupby("Ontology")["Sort Score"]
@@ -391,16 +377,213 @@ def engineer_features(df):
     )
     df["Quality_Tier"] = df.apply(assign_exclusive_quality_tier, axis=1)
 
-    return df, bool_pattern_cols, cont_engineered_cols, target_score_col
+    return df, nuclear_cols, bool_pattern_cols, cont_engineered_cols, target_score_col
 
 
 # =============================================================================
-# 4. STATISTICAL HYPOTHESIS TESTS ON BOOLEAN PATTERNS (ALL & PER ONTOLOGY)
+# 4. ALGORITHMIC COMPOSITE RULE MINING FROM NUCLEAR RULES [A]-[H] ONLY
+# =============================================================================
+def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min_confidence=0.74):
+    """
+    Mine composite boolean rules predicting simplified quality tiers (ELITE, GOOD)
+    strictly from the 8 nuclear rules [A]-[H] and the elementary virtual-ordering
+    disjunction (D ∨ H), WITHOUT including pre-defined composite rules as input features.
+
+    Uses mlxtend.frequent_patterns (apriori + association_rules) when available,
+    followed by minimal-generator and strict-confidence-gain pruning so only
+    non-redundant composite rules remain.
+    """
+    print("\n" + "=" * 80)
+    print("SCIENTIFIC RULE MINING FROM NUCLEAR RULES [A]-[H] (EXCLUDING COMPOSITE FEATURES)")
+    print("=" * 80)
+
+    # Build atomic rule basis A..H + elementary virtual-tier disjunction (D ∨ H)
+    atom_df = pd.DataFrame(index=df.index)
+    for col, letter in NUCLEAR_RULE_LETTERS.items():
+        atom_df[letter] = df[col].astype(bool)
+    atom_df["(D ∨ H)"] = atom_df["D"] | atom_df["H"]
+    cand_atoms = ["A", "B", "C", "D", "E", "F", "G", "H", "(D ∨ H)"]
+
+    known_composite_tags = {
+        "A ∧ E ∧ H": "Soft Tiers: Strict Chain [Target #1]",
+        "B ∧ E ∧ (D ∨ H)": "Soft Tiers: Relaxed 3-Tier [Target #2]",
+        "B ∧ F ∧ G ∧ H": "Conditional- Top Neg Anchor [Target #3]",
+    }
+
+    subsets = [("All_Runs", df.index)] + [
+        (ont, df[df["Ontology"] == ont].index) for ont in ONTOLOGIES
+    ]
+    target_tiers = ["ELITE", "GOOD"]
+
+    all_mined_rows = []
+    for subset_name, sub_idx in subsets:
+        sub_atoms = atom_df.loc[sub_idx]
+        sub_df = df.loc[sub_idx]
+        n_tot = len(sub_df)
+
+        for t_col in target_tiers:
+            t_vec = sub_df[t_col].to_numpy(dtype=bool)
+            n_target = int(t_vec.sum())
+            if n_target == 0:
+                continue
+            base_rate = n_target / n_tot
+
+            # Enumerate candidate itemsets via mlxtend.apriori (or exact enumeration fallback)
+            trans = sub_atoms[cand_atoms].copy()
+            trans[t_col] = t_vec
+            if HAS_MLXTEND:
+                freq = apriori(trans, min_support=min_support, use_colnames=True, max_len=5)
+                raw_ar = association_rules(freq, metric="confidence", min_threshold=min_confidence)
+                raw_ar = raw_ar[
+                    raw_ar["consequents"].apply(lambda s: s == frozenset([t_col]))
+                ]
+                candidate_sets = [
+                    tuple(sorted(ants, key=lambda x: cand_atoms.index(x)))
+                    for ants in raw_ar["antecedents"]
+                    if len(ants) <= 4 and not ("(D ∨ H)" in ants and ("D" in ants or "H" in ants))
+                ]
+            else:
+                candidate_sets = [
+                    comb
+                    for k in range(1, 5)
+                    for comb in combinations(cand_atoms, k)
+                    if not ("(D ∨ H)" in comb and ("D" in comb or "H" in comb))
+                ]
+
+            cand_records = []
+            for comb in candidate_sets:
+                mask = sub_atoms[list(comb)].all(axis=1).to_numpy(dtype=bool)
+                n_ant = int(mask.sum())
+                if n_ant == 0:
+                    continue
+                tp = int((mask & t_vec).sum())
+                if tp / n_tot < min_support:
+                    continue
+                conf = tp / n_ant
+                if conf < min_confidence:
+                    continue
+
+                # 1. Minimal generator check: reject if any proper subset has the exact same support
+                is_minimal = True
+                for sub_k in range(1, len(comb)):
+                    for sub_c in combinations(comb, sub_k):
+                        if int(sub_atoms[list(sub_c)].all(axis=1).sum()) == n_ant:
+                            is_minimal = False
+                            break
+                    if not is_minimal:
+                        break
+                if not is_minimal:
+                    continue
+
+                rec = tp / n_target
+                lift = conf / base_rate
+                f1 = 2.0 * conf * rec / (conf + rec) if (conf + rec) > 0 else 0.0
+                b = n_ant - tp
+                c = n_target - tp
+                d = n_tot - tp - b - c
+                _, p_val = stats.fisher_exact([[tp, b], [c, d]], alternative="greater")
+
+                expr_str = " ∧ ".join(comb)
+                cand_records.append({
+                    "Subset": subset_name,
+                    "Quality_Target": t_col,
+                    "Mined_Formula": expr_str,
+                    "Rule_Identity": known_composite_tags.get(expr_str, "Additional Mined Rule"),
+                    "Atoms": comb,
+                    "Mask": tuple(mask.tolist()),
+                    "Rule_Length": len(comb),
+                    "N_Match": tp,
+                    "N_Rule_True": n_ant,
+                    "Support": round(tp / n_tot, 4),
+                    "Confidence": round(conf, 4),
+                    "Recall": round(rec, 4),
+                    "Lift": round(lift, 4),
+                    "F1_Score": round(f1, 4),
+                    "Mean_Norm_Score": round(float(sub_df.loc[mask, "Sort Score Norm"].mean()), 4),
+                    "Min_Norm_Score": round(float(sub_df.loc[mask, "Sort Score Norm"].min()), 4),
+                    "Fisher_p_value": float(p_val),
+                })
+
+            if not cand_records:
+                continue
+
+            c_df = pd.DataFrame(cand_records)
+            # 2. Canonical mask deduplication: if two formulas select identical rows, prefer
+            #    shorter length, threshold-free polarity rules (A/B over C), and simpler clauses
+            def priority_key(row):
+                atoms = row["Atoms"]
+                has_c = 1 if "C" in atoms else 0
+                has_disj = 1 if "(D ∨ H)" in atoms else 0
+                return (row["Rule_Length"], has_c, has_disj, atoms)
+
+            c_df["_prio"] = c_df.apply(priority_key, axis=1)
+            c_df = (
+                c_df.sort_values("_prio")
+                .drop_duplicates(subset=["Mask"], keep="first")
+                .drop(columns=["_prio"])
+            )
+
+            # 3. Sub-rule confidence dominance: keep a composite rule only if it strictly
+            #    improves Confidence over all of its proper sub-rules
+            kept_idx = []
+            for idx, r in c_df.iterrows():
+                comb = r["Atoms"]
+                conf = r["Confidence"]
+                dominated = False
+                for sub_k in range(1, len(comb)):
+                    for sub_c in combinations(comb, sub_k):
+                        sub_m = sub_atoms[list(sub_c)].all(axis=1).to_numpy(dtype=bool)
+                        sub_n = int(sub_m.sum())
+                        if sub_n > 0:
+                            sub_conf = int((sub_m & t_vec).sum()) / sub_n
+                            if sub_conf >= conf - 1e-9:
+                                dominated = True
+                                break
+                    if dominated:
+                        break
+                if not dominated:
+                    kept_idx.append(idx)
+
+            c_df = c_df.loc[kept_idx].copy()
+            if not c_df.empty:
+                c_df["Fisher_p_adj_BH"] = adjust_pvalues_bh(c_df["Fisher_p_value"].to_numpy())
+                c_df = c_df.sort_values(
+                    by=["Confidence", "F1_Score", "Lift", "Mean_Norm_Score"],
+                    ascending=[False, False, False, False],
+                ).drop(columns=["Atoms", "Mask"])
+                all_mined_rows.append(c_df)
+
+    mined_rules_df = pd.concat(all_mined_rows, ignore_index=True) if all_mined_rows else pd.DataFrame()
+    mined_out_path = os.path.join(evi_exp_res_dir, "soft_label_association_rules.tsv")
+    mined_rules_df.to_csv(mined_out_path, sep="\t", index=False)
+
+    for (sub_name, t_col), grp in mined_rules_df.groupby(["Subset", "Quality_Target"], sort=False):
+        print(f"\n--- Mined Non-Redundant Rules | Subset: {sub_name} | Target: {t_col} ---")
+        show_cols = [
+            "Mined_Formula",
+            "Rule_Identity",
+            "N_Match",
+            "N_Rule_True",
+            "Confidence",
+            "Recall",
+            "Lift",
+            "F1_Score",
+            "Mean_Norm_Score",
+            "Fisher_p_adj_BH",
+        ]
+        print(grp[show_cols].head(10).to_string(index=False))
+
+    print(f"\n[Saved algorithmically mined composite rules to: {mined_out_path}]")
+    return mined_rules_df
+
+
+# =============================================================================
+# 5. STATISTICAL HYPOTHESIS TESTS ON BOOLEAN PATTERNS (ALL & PER ONTOLOGY)
 # =============================================================================
 def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_res_dir):
-    """Run Mann-Whitney U, Point-Biserial, Mutual Info, Chi2, and BH-FDR correction."""
+    """Run Mann-Whitney U, Point-Biserial, Rank-Biserial, and BH-FDR correction."""
     print("\n" + "=" * 80)
-    print("MANN-WHITNEY U, POINT-BISERIAL & CHI2 TESTS FOR BOOLEAN PATTERN FEATURES")
+    print("MANN-WHITNEY U & RANK-BISERIAL TESTS FOR BOOLEAN PATTERN FEATURES")
     print("=" * 80)
 
     subsets = [("All_Runs", df)] + [
@@ -410,17 +593,11 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
     pattern_stats_rows = []
     for subset_name, sub_df in subsets:
         score_col = target_score_col if subset_name == "All_Runs" else "Sort Score"
-        X_bool = sub_df[bool_pattern_cols].astype(int)
         y_sub = sub_df[score_col]
-        mi_bool = mutual_info_regression(
-            X_bool, y_sub, discrete_features=True, random_state=42
-        )
-        chi2_good, _ = chi2(X_bool, sub_df["GOOD"].astype(int))
-        chi2_bad, _ = chi2(X_bool, sub_df["BAD"].astype(int))
 
-        tot_vg = int(sub_df["VERY_GOOD"].sum())
+        tot_elite = int(sub_df["ELITE"].sum())
         subset_rows = []
-        for idx, pat in enumerate(bool_pattern_cols):
+        for pat in bool_pattern_cols:
             mask = sub_df[pat].astype(bool)
             grp_true = sub_df.loc[mask, score_col]
             grp_false = sub_df.loc[~mask, score_col]
@@ -430,10 +607,10 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
             pb_r, _ = stats.pointbiserialr(mask.astype(int), y_sub)
             r_rb = (2.0 * u_stat) / (len(grp_true) * len(grp_false)) - 1.0
 
-            vg_in_true = int(sub_df.loc[mask, "VERY_GOOD"].sum())
+            elite_in_true = int(sub_df.loc[mask, "ELITE"].sum())
             good_in_true = int(sub_df.loc[mask, "GOOD"].sum())
-            med_in_true = int(sub_df.loc[mask, "MEDIOCRE"].sum())
-            vg_recall = vg_in_true / max(tot_vg, 1)
+            poor_in_true = int(sub_df.loc[mask, "POOR"].sum())
+            elite_recall = elite_in_true / max(tot_elite, 1)
             good_prec = good_in_true / max(len(grp_true), 1)
             rule_cat = "Composite Rule" if pat in COMPOSITE_RULE_EXPRESSIONS else "Nuclear Rule"
 
@@ -450,14 +627,11 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
                 "Median_Score_False": round(grp_false.median(), 4),
                 "N_True": len(grp_true),
                 "N_False": len(grp_false),
-                "VERY_GOOD_in_True": vg_in_true,
-                "VERY_GOOD_Recall": round(vg_recall, 4),
-                "GOOD_Plus_Precision": round(good_prec, 4),
-                "MEDIOCRE_in_True": med_in_true,
+                "ELITE_in_True": elite_in_true,
+                "ELITE_Recall": round(elite_recall, 4),
+                "GOOD_Precision": round(good_prec, 4),
+                "POOR_in_True": poor_in_true,
                 "Point_Biserial_r": round(pb_r, 4),
-                "Mutual_Info": round(mi_bool[idx], 4),
-                "Chi2_GOOD": round(float(chi2_good[idx]), 3) if np.isfinite(chi2_good[idx]) else 0.0,
-                "Chi2_BAD": round(float(chi2_bad[idx]), 3) if np.isfinite(chi2_bad[idx]) else 0.0,
                 "MannWhitney_p_value": p_val,
                 "Pattern": pat,
             })
@@ -477,12 +651,12 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
 
 
 # =============================================================================
-# 5. CONTINUOUS FEATURE IMPORTANCE & CORRELATION ANALYSIS (ALL & PER ONTOLOGY)
+# 6. CONTINUOUS FEATURE CORRELATION ANALYSIS (SPEARMAN & PEARSON + BH-FDR)
 # =============================================================================
 def analyze_continuous_features(df, cont_engineered_cols, target_score_col, evi_exp_res_dir):
-    """Evaluate continuous soft labels and engineered margins with BH-FDR adjusted p-values."""
+    """Evaluate continuous soft labels and engineered margins via Spearman & Pearson correlations."""
     print("\n" + "=" * 80)
-    print("CONTINUOUS FEATURE IMPORTANCE & CORRELATION (ALL RUNS & PER ONTOLOGY)")
+    print("CONTINUOUS FEATURE CORRELATIONS (ALL RUNS & PER ONTOLOGY — NO RF IMPORTANCE)")
     print("=" * 80)
     float_cols = list(SOFT_LABEL_COLORS.keys()) + cont_engineered_cols
 
@@ -493,52 +667,42 @@ def analyze_continuous_features(df, cont_engineered_cols, target_score_col, evi_
     float_rows = []
     for subset_name, sub_df in subsets:
         score_col = target_score_col if subset_name == "All_Runs" else "Sort Score"
-        X_float = sub_df[float_cols]
         y_score = sub_df[score_col]
 
-        mi_scores = mutual_info_regression(X_float, y_score, random_state=42)
-        f_vals, _ = f_regression(X_float, y_score)
-        rf_reg = RandomForestRegressor(n_estimators=500, random_state=42)
-        rf_reg.fit(X_float, y_score)
-        rf_importances = rf_reg.feature_importances_
-        perm_imp = permutation_importance(
-            rf_reg, X_float, y_score, n_repeats=20, random_state=42
-        ).importances_mean
-
         subset_rows = []
-        for i, col in enumerate(float_cols):
+        for col in float_cols:
             sp_r, sp_p = stats.spearmanr(sub_df[col], y_score)
-            pe_r, _ = stats.pearsonr(sub_df[col], y_score)
+            pe_r, pe_p = stats.pearsonr(sub_df[col], y_score)
             subset_rows.append({
                 "Subset": subset_name,
                 "Display_Name": parse_label_name(col),
                 "Feature_Group": "Engineered Margin" if col in cont_engineered_cols else "Raw Soft Label",
                 "Spearman_r": round(float(sp_r), 4),
                 "Spearman_p_adj_BH": np.nan,
-                "RF_Importance": round(float(rf_importances[i]), 4),
-                "Permutation_Imp": round(float(perm_imp[i]), 4),
-                "Mutual_Info": round(float(mi_scores[i]), 4),
                 "Pearson_r": round(float(pe_r), 4),
-                "F_Stat": round(float(f_vals[i]), 2),
+                "Pearson_p_adj_BH": np.nan,
                 "Spearman_p": float(sp_p),
+                "Pearson_p": float(pe_p),
                 "Soft_Label": col,
             })
 
-        adj_p = adjust_pvalues_bh([r["Spearman_p"] for r in subset_rows])
-        for r, p_adj in zip(subset_rows, adj_p):
-            r["Spearman_p_adj_BH"] = float(p_adj)
+        sp_adj = adjust_pvalues_bh([r["Spearman_p"] for r in subset_rows])
+        pe_adj = adjust_pvalues_bh([r["Pearson_p"] for r in subset_rows])
+        for r, s_a, p_a in zip(subset_rows, sp_adj, pe_adj):
+            r["Spearman_p_adj_BH"] = float(s_a)
+            r["Pearson_p_adj_BH"] = float(p_a)
         float_rows.extend(subset_rows)
 
     float_stats_df = pd.DataFrame(float_rows)
     float_stats_path = os.path.join(evi_exp_res_dir, "soft_label_float_correlations.tsv")
     float_stats_df.to_csv(float_stats_path, sep="\t", index=False)
     print(float_stats_df.to_string(index=False))
-    print(f"\n[Saved continuous feature correlations & importances to: {float_stats_path}]")
+    print(f"\n[Saved continuous feature correlations to: {float_stats_path}]")
     return float_stats_df
 
 
 # =============================================================================
-# 6. PUBLICATION-READY MULTI-SHEET EXCEL EXPORT (PANDAS + OPENPYXL)
+# 7. PUBLICATION-READY MULTI-SHEET EXCEL EXPORT (PANDAS + OPENPYXL)
 # =============================================================================
 def apply_sheet_styling(ws, col_formats, freeze_cell="C2"):
     """Apply publication-ready formatting, explicit number formats, and auto-fitted widths."""
@@ -623,12 +787,12 @@ def apply_sheet_styling(ws, col_formats, freeze_cell="C2"):
             elif val_str == "NO":
                 c.fill = no_fill
                 c.font = no_font
-            elif val_str.startswith("1. VERY_GOOD"):
+            elif val_str.startswith("1. ELITE") or "[Target #" in val_str:
                 c.fill = vg_fill
                 c.font = yes_font
             elif val_str.startswith("2. GOOD"):
                 c.fill = good_fill
-            elif val_str.startswith(("5. BAD", "6. VERY_BAD", "7. HORRIBLE")):
+            elif val_str.startswith("4. POOR"):
                 c.fill = bad_fill
 
     # Auto-fit column widths
@@ -648,24 +812,25 @@ def apply_sheet_styling(ws, col_formats, freeze_cell="C2"):
         ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 40)
 
 
-def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_path):
+def export_publication_excel(df, float_stats_df, pattern_stats_df, mined_rules_df, out_excel_path):
     """
-    Build a 3-sheet publication-ready Excel workbook using pandas.ExcelWriter + openpyxl:
-      - Sheet 1 ('1_Continuous_Features'): Continuous soft labels & margins sorted by importance/correlation
-      - Sheet 2 ('2_Boolean_Rules'): Composite & nuclear boolean rules sorted by effect size
+    Build a publication-ready multi-sheet Excel workbook using pandas.ExcelWriter + openpyxl:
+      - Sheet 1 ('1_Continuous_Features'): Continuous soft labels & margins sorted by |Spearman r|
+      - Sheet 2 ('2_Boolean_Rules'): Composite & nuclear boolean rules + mined rule discovery metrics
       - Sheet 3 ('3_All_300_Tests'): All 300 benchmark runs sorted by Ontology & Overall Sort Score
+      - Sheet 4 ('4_Mined_Composite_Rules'): Complete algorithmic rule-mining table from [A]-[H]
     """
     subset_order = {"All_Runs": 0, "MF": 1, "BP": 2, "CC": 3}
 
     # -------------------------------------------------------------------------
-    # SHEET 1 DATAFRAME: Continuous Features Analysis
+    # SHEET 1 DATAFRAME: Continuous Features Analysis (Correlations & p-values only)
     # -------------------------------------------------------------------------
     s1 = float_stats_df.copy()
     s1["_sub_ord"] = s1["Subset"].map(subset_order).fillna(9)
     s1["_abs_r"] = s1["Spearman_r"].abs()
     s1 = s1.sort_values(
-        by=["_sub_ord", "RF_Importance", "_abs_r"],
-        ascending=[True, False, False],
+        by=["_sub_ord", "_abs_r"],
+        ascending=[True, False],
     ).drop(columns=["_sub_ord", "_abs_r"])
 
     s1_rename = {
@@ -674,12 +839,10 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
         "Feature_Group": "Feature Category",
         "Spearman_r": "Spearman r",
         "Spearman_p_adj_BH": "Spearman p (BH-FDR)",
-        "RF_Importance": "RF Importance",
-        "Permutation_Imp": "Permutation Importance",
-        "Mutual_Info": "Mutual Information",
         "Pearson_r": "Pearson r",
-        "F_Stat": "ANOVA F-Stat",
+        "Pearson_p_adj_BH": "Pearson p (BH-FDR)",
         "Spearman_p": "Spearman p (Raw)",
+        "Pearson_p": "Pearson p (Raw)",
         "Soft_Label": "Variable Code",
     }
     s1 = s1[list(s1_rename.keys())].rename(columns=s1_rename)
@@ -708,14 +871,11 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
         "Median_Score_False": "Median Score (False)",
         "N_True": "N (True)",
         "N_False": "N (False)",
-        "VERY_GOOD_in_True": "VERY_GOOD Count (True)",
-        "VERY_GOOD_Recall": "VERY_GOOD Recall",
-        "GOOD_Plus_Precision": ">=GOOD Precision (True)",
-        "MEDIOCRE_in_True": "MEDIOCRE Count (True)",
+        "ELITE_in_True": "ELITE Count (True)",
+        "ELITE_Recall": "ELITE Recall",
+        "GOOD_Precision": "GOOD Precision (True)",
+        "POOR_in_True": "POOR Count (True)",
         "Point_Biserial_r": "Point-Biserial r",
-        "Mutual_Info": "Mutual Information",
-        "Chi2_GOOD": "Chi2 Stat (GOOD)",
-        "Chi2_BAD": "Chi2 Stat (BAD)",
         "MannWhitney_p_value": "Mann-Whitney p (Raw)",
         "Pattern": "Variable Code",
     }
@@ -735,6 +895,7 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
         "soft_tiers_strict_chain",
         "soft_tiers_2",
         "conditional_neg_top_anchor",
+        "strict_4tier",
         "neg_below_pos",
         "natural_polarity_split",
         "pos_to_virtual_margin_relevant",
@@ -761,6 +922,7 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
         "soft_tiers_strict_chain": "Strict Chain (A ∧ E ∧ H)",
         "soft_tiers_2": "Relaxed 3-Tier (B ∧ E ∧ (D ∨ H))",
         "conditional_neg_top_anchor": "Cond- Top Anchor (B ∧ F ∧ G ∧ H)",
+        "strict_4tier": "Strict 4-Tier Hierarchy",
         "phylo": "Phylogenetic+ (PY+)",
         "curated": "Curated+ (CU+)",
         "conditional_not": "Conditional- (CO-)",
@@ -792,11 +954,35 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
     s3_cols = [c for c in s3_rename.keys() if c in s3.columns]
     s3 = s3[s3_cols].rename(columns=s3_rename)
 
-    # Write all 3 sheets via pandas.ExcelWriter (Row 1 = Header Row)
+    # -------------------------------------------------------------------------
+    # SHEET 4 DATAFRAME: Algorithmically Mined Composite Rules from [A]-[H]
+    # -------------------------------------------------------------------------
+    s4 = mined_rules_df.copy()
+    s4_rename = {
+        "Subset": "Ontology Subset",
+        "Quality_Target": "Quality Tier Target",
+        "Mined_Formula": "Mined Logical Formula",
+        "Rule_Identity": "Rule Classification",
+        "Confidence": "Precision / Confidence",
+        "Recall": "Target Recall",
+        "F1_Score": "F1 Score",
+        "Lift": "Apriori Lift",
+        "Fisher_p_adj_BH": "Fisher p (BH-FDR)",
+        "N_Match": "Target Matches",
+        "N_Rule_True": "Total Rule Matches",
+        "Support": "Support",
+        "Mean_Norm_Score": "Mean Norm Score",
+        "Min_Norm_Score": "Min Norm Score",
+        "Rule_Length": "Clause Count",
+        "Fisher_p_value": "Fisher p (Raw)",
+    }
+    s4 = s4[list(s4_rename.keys())].rename(columns=s4_rename)
+
     with pd.ExcelWriter(out_excel_path, engine="openpyxl") as writer:
         s1.to_excel(writer, sheet_name="1_Continuous_Features", index=False)
         s2.to_excel(writer, sheet_name="2_Boolean_Rules", index=False)
         s3.to_excel(writer, sheet_name="3_All_300_Tests", index=False)
+        s4.to_excel(writer, sheet_name="4_Mined_Composite_Rules", index=False)
 
         wb = writer.book
         s1_formats = {
@@ -805,12 +991,10 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
             "Feature Category": ("@", "left"),
             "Spearman r": ("+0.0000;-0.0000;0.0000", "right"),
             "Spearman p (BH-FDR)": ("0.00E+00", "right"),
-            "RF Importance": ("0.0000", "right"),
-            "Permutation Importance": ("0.0000", "right"),
-            "Mutual Information": ("0.0000", "right"),
             "Pearson r": ("+0.0000;-0.0000;0.0000", "right"),
-            "ANOVA F-Stat": ("#,##0.00", "right"),
+            "Pearson p (BH-FDR)": ("0.00E+00", "right"),
             "Spearman p (Raw)": ("0.00E+00", "right"),
+            "Pearson p (Raw)": ("0.00E+00", "right"),
             "Variable Code": ("@", "left"),
         }
         apply_sheet_styling(wb["1_Continuous_Features"], s1_formats, freeze_cell="C2")
@@ -828,14 +1012,11 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
             "Median Score (False)": ("0.0000", "right"),
             "N (True)": ("#,##0", "right"),
             "N (False)": ("#,##0", "right"),
-            "VERY_GOOD Count (True)": ("#,##0", "right"),
-            "VERY_GOOD Recall": ("0.0%", "right"),
-            ">=GOOD Precision (True)": ("0.0%", "right"),
-            "MEDIOCRE Count (True)": ("#,##0", "right"),
+            "ELITE Count (True)": ("#,##0", "right"),
+            "ELITE Recall": ("0.0%", "right"),
+            "GOOD Precision (True)": ("0.0%", "right"),
+            "POOR Count (True)": ("#,##0", "right"),
             "Point-Biserial r": ("+0.0000;-0.0000;0.0000", "right"),
-            "Mutual Information": ("0.0000", "right"),
-            "Chi2 Stat (GOOD)": ("0.00", "right"),
-            "Chi2 Stat (BAD)": ("0.00", "right"),
             "Mann-Whitney p (Raw)": ("0.00E+00", "right"),
             "Variable Code": ("@", "left"),
         }
@@ -884,15 +1065,34 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, out_excel_pat
         }
         apply_sheet_styling(wb["3_All_300_Tests"], s3_formats, freeze_cell="E2")
 
+        s4_formats = {
+            "Ontology Subset": ("@", "left"),
+            "Quality Tier Target": ("@", "left"),
+            "Mined Logical Formula": ("@", "left"),
+            "Rule Classification": ("@", "left"),
+            "Precision / Confidence": ("0.0%", "right"),
+            "Target Recall": ("0.0%", "right"),
+            "F1 Score": ("0.0000", "right"),
+            "Apriori Lift": ("0.00", "right"),
+            "Fisher p (BH-FDR)": ("0.00E+00", "right"),
+            "Target Matches": ("#,##0", "right"),
+            "Total Rule Matches": ("#,##0", "right"),
+            "Support": ("0.0%", "right"),
+            "Mean Norm Score": ("0.0000", "right"),
+            "Min Norm Score": ("0.0000", "right"),
+            "Clause Count": ("#,##0", "right"),
+            "Fisher p (Raw)": ("0.00E+00", "right"),
+        }
+        apply_sheet_styling(wb["4_Mined_Composite_Rules"], s4_formats, freeze_cell="D2")
+
     print(f"[Saved publication-ready multi-sheet Excel workbook to: {out_excel_path}]")
 
 
 # =============================================================================
-# 7. COMPACT TWO-ROW MULTI-ONTOLOGY RELATIONSHIPS VISUALIZATION (PANELS A & B)
+# 8. COMPACT TWO-ROW MULTI-ONTOLOGY RELATIONSHIPS VISUALIZATION (PANELS A & B)
 # =============================================================================
 def plot_relationships(
     df,
-    pattern_stats_df,
     float_stats_df,
     bool_pattern_cols,
     evi_exp_res_dir,
@@ -900,72 +1100,50 @@ def plot_relationships(
     """
     Create a compact, high-readability 2-row figure (soft_optimization_relationships.png):
       - Top Row (Panel A): Continuous Soft Labels & Engineered Margins Impact across Ontologies
-        (RF Importance and |Spearman r| for MF, BP, and CC with signed r and BH-FDR adjusted p-values).
+        (|Spearman r| for MF, BP, and CC with signed r and BH-FDR adjusted p-values — no RF bars).
       - Bottom Row (Panel B): 3 seamless side-by-side boxplot panels (MF, BP, CC) over unnormalized
         Overall Score (%), showing readable rule names (nuclear letters [A]-[H] and composite boolean
         expressions) only on the leftmost panel, with no separating vertical spines.
     """
-    fig = plt.figure(figsize=(12.2, 13.5))
-    gs = fig.add_gridspec(2, 1, height_ratios=[1.15, 1.0], hspace=0.25)
+    fig = plt.figure(figsize=(12.0, 12.8))
+    gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.05], hspace=0.25)
     gs_bot = gs[1].subgridspec(1, 3, wspace=0.04)
 
     ax_flt = fig.add_subplot(gs[0])
     ax_a_list = [fig.add_subplot(gs_bot[0, i]) for i in range(3)]
 
     # -------------------------------------------------------------------------
-    # PANEL A (TOP ROW): Continuous Soft Labels & Engineered Margins Across Ontologies
+    # PANEL A (TOP ROW): Continuous Soft Labels & Engineered Margins (|Spearman r| Only)
     # -------------------------------------------------------------------------
+    all_runs_flt = float_stats_df[float_stats_df["Subset"] == "All_Runs"].copy()
+    all_runs_flt["_abs_r"] = all_runs_flt["Spearman_r"].abs()
     all_float_order = (
-        float_stats_df[float_stats_df["Subset"] == "All_Runs"]
-        .sort_values(by="RF_Importance", ascending=True)["Soft_Label"]
-        .tolist()
+        all_runs_flt.sort_values(by="_abs_r", ascending=True)["Soft_Label"].tolist()
     )
+
     y_pos = np.arange(len(all_float_order))
-    bar_h = 0.142
+    bar_h = 0.25
     offsets = {
-        ("RF", "MF"): -2.5 * bar_h,
-        ("RF", "BP"): -1.5 * bar_h,
-        ("RF", "CC"): -0.5 * bar_h,
-        ("SP", "MF"): +0.5 * bar_h,
-        ("SP", "BP"): +1.5 * bar_h,
-        ("SP", "CC"): +2.5 * bar_h,
-    }
-    text_y_offsets = {
-        "MF": +0.5 * bar_h - 0.055,
-        "BP": +1.5 * bar_h + 0.005,
-        "CC": +2.5 * bar_h + 0.065,
+        "MF": -1.0 * bar_h,
+        "BP": 0.0,
+        "CC": +1.0 * bar_h,
     }
 
     flt_lookup = float_stats_df.set_index(["Subset", "Soft_Label"])
-
-    for ont in ONTOLOGIES:
-        rf_vals = [
-            flt_lookup.loc[(ont, col), "RF_Importance"] for col in all_float_order
-        ]
-        ax_flt.barh(
-            y_pos + offsets[("RF", ont)],
-            rf_vals,
-            height=bar_h,
-            label=f"RF Importance ({ont})",
-            color=ONTOLOGY_RF_COLORS[ont],
-            alpha=0.92,
-            edgecolor="white",
-            linewidth=0.4,
-        )
 
     for ont in ONTOLOGIES:
         sp_abs_vals = [
             abs(flt_lookup.loc[(ont, col), "Spearman_r"]) for col in all_float_order
         ]
         ax_flt.barh(
-            y_pos + offsets[("SP", ont)],
+            y_pos + offsets[ont],
             sp_abs_vals,
             height=bar_h,
             label=f"|Spearman r| ({ont})",
             color=ONTOLOGY_SPEARMAN_COLORS[ont],
             alpha=0.92,
             edgecolor="white",
-            linewidth=0.4,
+            linewidth=0.5,
         )
 
         for i, col in enumerate(all_float_order):
@@ -974,11 +1152,11 @@ def plot_relationships(
             p_str = format_pvalue_rounded(p_adj, prefix="p")
             ax_flt.text(
                 abs(r_val) + 0.008,
-                i + text_y_offsets[ont],
+                i + offsets[ont],
                 f"{ont}: r={r_val:+.2f} ({p_str})",
                 va="center",
                 ha="left",
-                fontsize=9.0,
+                fontsize=9.2,
                 color="#7a2e00" if ont == "MF" else ("#9c4c00" if ont == "BP" else "#7d5a00"),
                 fontweight="bold",
             )
@@ -991,9 +1169,9 @@ def plot_relationships(
     ax_flt.set_yticklabels(y_display_labels, fontsize=11.0, fontweight="bold")
     ax_flt.tick_params(axis="x", labelsize=10.5)
     max_sp = float_stats_df["Spearman_r"].abs().max()
-    ax_flt.set_xlim(0, max(1.00, max_sp + 0.23))
+    ax_flt.set_xlim(0, max(0.98, max_sp + 0.22))
     ax_flt.set_xlabel(
-        "RF Feature Importance / |Spearman Correlation| (Signed r & BH-Adjusted p-value)",
+        "|Spearman Rank Correlation| (Annotated with Signed r & BH-Adjusted p-value)",
         fontsize=11.5,
         fontweight="bold",
     )
@@ -1004,12 +1182,11 @@ def plot_relationships(
         pad=10,
     )
     ax_flt.legend(
-        title="Metric & Ontology",
+        title="Ontology",
         loc="lower right",
-        ncol=2,
         framealpha=0.95,
-        fontsize=9.6,
-        title_fontsize=10.2,
+        fontsize=10.0,
+        title_fontsize=10.5,
     )
     ax_flt.grid(True, axis="x", linestyle="--", alpha=0.4)
 
@@ -1020,6 +1197,7 @@ def plot_relationships(
         "soft_tiers_strict_chain",
         "soft_tiers_2",
         "conditional_neg_top_anchor",
+        "strict_4tier"
     ]
     nuclear_cols = [
         "neg_below_pos",
@@ -1136,7 +1314,7 @@ def plot_relationships(
 
 
 # =============================================================================
-# 8. MAIN ORCHESTRATOR
+# 9. MAIN ORCHESTRATOR
 # =============================================================================
 def main():
     if len(sys.argv) < 2:
@@ -1145,9 +1323,10 @@ def main():
     df, evi_exp_res_dir = resolve_paths_and_load_data(sys.argv[1])
     plot_soft_label_scatter(df, evi_exp_res_dir)
 
-    df, bool_pattern_cols, cont_engineered_cols, target_score_col = engineer_features(df)
+    df, nuclear_cols, bool_pattern_cols, cont_engineered_cols, target_score_col = engineer_features(df)
     df.to_csv(os.path.join(evi_exp_res_dir, "df_engineered.csv"), index=False)
 
+    mined_rules_df = mine_composite_rules_from_nuclear(df, evi_exp_res_dir)
     pattern_stats_df = analyze_boolean_patterns(
         df, bool_pattern_cols, target_score_col, evi_exp_res_dir
     )
@@ -1155,11 +1334,12 @@ def main():
         df, cont_engineered_cols, target_score_col, evi_exp_res_dir
     )
     excel_out_path = os.path.join(evi_exp_res_dir, "soft_label_supplementary_tables.xlsx")
-    export_publication_excel(df, float_stats_df, pattern_stats_df, excel_out_path)
+    export_publication_excel(
+        df, float_stats_df, pattern_stats_df, mined_rules_df, excel_out_path
+    )
 
     plot_relationships(
         df,
-        pattern_stats_df,
         float_stats_df,
         bool_pattern_cols,
         evi_exp_res_dir,
