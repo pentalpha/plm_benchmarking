@@ -50,7 +50,6 @@ ORIGINAL_PLACEHOLDER_VALS = {
     "curated_not": 0.01,
 }
 
-
 def load_best_parameters_by_ont(input_path: str):
     """
     Parses the input TSV/CSV and extracts the best parameters for each ontology (MF, BP, CC)
