@@ -1,14 +1,18 @@
 import os
 import sys
+import json
 from itertools import combinations
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import matplotlib.gridspec as gridspec
+import matplotlib.path as mpath
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyArrowPatch
+from matplotlib.colors import to_rgba
 import seaborn as sns
 from scipy import stats
 import openpyxl
-from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
-from openpyxl.utils import get_column_letter
 
 try:
     from mlxtend.frequent_patterns import apriori, association_rules
@@ -20,14 +24,25 @@ except ImportError:
 # CONSTANTS & LABEL MAPPINGS
 # =============================================================================
 SOFT_LABEL_COLORS = {
-    "phylo": "navy",
-    "curated": "cornflowerblue",
-    "conditional_not": "mediumvioletred",
-    "Random False Val": "yellow",
-    "curated_not": "red",
-    "derived_not": "firebrick",
-    "phylo_not": "maroon",
+    "phylo": "#250C6F",             # Deep Ultramarine Navy
+    "curated": "#2D5CCB",           # Bright Royal Blue
+    "conditional_not": "#6D863C",   # Olive Green
+    "Random False Val": "#FFF200",  # Luminous Golden Yellow
+    "curated_not": "#ff5d00",       # Bright Tangerine-Orange
+    "derived_not": "#d90429",       # Pure Crimson Red
+    "phylo_not": "#4D1400",         # Deep Espresso / Umber
 }
+
+# Explicit intuitive legend order requested for Panel A: py-, de-, cu-, rd-, co-, cu+, py+
+LEGEND_LABEL_ORDER = [
+    "phylo_not",
+    "derived_not",
+    "curated_not",
+    "Random False Val",
+    "conditional_not",
+    "curated",
+    "phylo",
+]
 
 NEG_LABELS = [
     "conditional_not",
@@ -51,52 +66,66 @@ ONTOLOGY_TITLES = {
     "CC": "Cellular Component (CC)",
 }
 
-# Simplified, boxplot-aligned quality thresholds on Normalized Sort Score [0, 1]:
-# - ELITE (>= 0.90): Top 10% of the score span (tight peak cluster in boxplots)
-# - GOOD  (>= 0.85): Top 15% of the score span (above the upper quartile of False boxplots)
-# - POOR  (<  0.50): Bottom half of the score span (polarity-inversion failure regime)
 QUALITY_THRESHOLDS = {
     "ELITE": (">=", 0.90),
     "GOOD": (">=", 0.85),
     "POOR": ("<", 0.50),
 }
 
-# Nuclear boolean rules (assigned letters A-H in descending order of overall effect size)
+# Nuclear rules ordered strictly by ascending BH-adjusted p-value (A = lowest p-value, H = largest p-value):
+#   A: neg_below_pos (p = 3.9e-32)
+#   B: natural_polarity_split (p = 1.3e-30)
+#   C: pos_to_virtual_margin_relevant (p = 2.0e-30)
+#   D: derived_neg_le_conditional_neg (p = 1.2e-15)
+#   E: derived_neg_below_virtual_negs (p = 1.4e-15)
+#   F: virtual_neg_higher (p = 8.5e-11)
+#   G: conditional_neg_gt_real_neg_median (p = 5.6e-08)
+#   H: random_false_val_lt_conditional_not (p = 8.5e-04)
 NUCLEAR_RULE_LETTERS = {
     "neg_below_pos": "A",
     "natural_polarity_split": "B",
     "pos_to_virtual_margin_relevant": "C",
-    "virtual_neg_higher": "D",
+    "derived_neg_le_conditional_neg": "D",
     "derived_neg_below_virtual_negs": "E",
-    "derived_neg_le_conditional_neg": "F",
+    "virtual_neg_higher": "F",
     "conditional_neg_gt_real_neg_median": "G",
     "random_false_val_lt_conditional_not": "H",
 }
 
 LETTER_TO_NUCLEAR_COL = {v: k for k, v in NUCLEAR_RULE_LETTERS.items()}
 
-# Logical expressions for the 3 key composite rules (discovered via rule mining on A-H)
+# Apriori / composite rules named R1-R4 (ordered by ascending BH-adjusted p-value, matching A-H)
+COMPOSITE_RULE_NAMES = {
+    "conditional_neg_top_anchor": "R1",  # p = 6.8e-23 (lowest p-value)
+    "soft_tiers_2": "R2",                # p = 6.8e-20
+    "soft_tiers_strict_chain": "R3",     # p = 6.8e-19
+    "strict_4tier": "R4",                # p = 7.7e-14
+}
+
 COMPOSITE_RULE_EXPRESSIONS = {
+    "conditional_neg_top_anchor": "B ∧ D ∧ G ∧ H",
+    "soft_tiers_2": "B ∧ E ∧ (F ∨ H)",
     "soft_tiers_strict_chain": "A ∧ E ∧ H",
-    "soft_tiers_2": "B ∧ E ∧ (D ∨ H)",
-    "conditional_neg_top_anchor": "B ∧ F ∧ G ∧ H",
-    "strict_4tier": "A ∧ D ∧ H"
+    "strict_4tier": "A ∧ F ∧ H",
 }
 
-# Shades for Panel A (|Spearman r| across MF, BP, CC)
+# Colors for Panel C (MF, BP, CC bars) and Panel D (Blue for True, Orange for False)
+# selected directly from SOFT_LABEL_COLORS in Panels A & B
 ONTOLOGY_SPEARMAN_COLORS = {
-    "MF": "#a04000",  # Dark rust orange
-    "BP": "#e67e22",  # Medium amber orange
-    "CC": "#f5b041",  # Light golden orange
+    "MF": SOFT_LABEL_COLORS["phylo"],        # "#250C6F" Deep Ultramarine Navy
+    "BP": SOFT_LABEL_COLORS["curated"],      # "#2D5CCB" Bright Royal Blue
+    "CC": SOFT_LABEL_COLORS["curated_not"],  # "#ff5d00" Bright Tangerine-Orange
 }
 
-thin_horizontal_rect = [(-5, -1), (5, -1), (5, 1), (-5, 1)]
+BOXPLOT_RULE_PALETTE = {
+    "True": SOFT_LABEL_COLORS["curated"],       # "#2D5CCB" Bright Royal Blue
+    "False": SOFT_LABEL_COLORS["curated_not"],  # "#ff5d00" Bright Tangerine-Orange
+}
 
 
 def parse_label_name(name):
     """Map raw column names to readable display names."""
     alt_names = {
-        # Raw soft labels
         "phylo": "Phylogenetic+",
         "curated": "Curated+",
         "conditional_not": "Conditional-",
@@ -104,7 +133,6 @@ def parse_label_name(name):
         "curated_not": "Curated-",
         "derived_not": "Derived-",
         "phylo_not": "Phylogenetic-",
-        # Continuous engineered features
         "pos_neg_inversion_count": "Pos/Neg Inversion Count",
         "pos_to_virtual_margin": "Pos-to-Virtual Margin",
         "virtual_to_real_margin": "Virtual-to-Real Margin",
@@ -113,7 +141,6 @@ def parse_label_name(name):
         "real_neg_median": "Real Negatives Median",
         "virtual_neg_mean": "Virtual Negatives Mean",
         "real_neg_spread": "Real Negatives Spread",
-        # Boolean pattern features
         "soft_tiers_strict_chain": "Soft Tiers: Strict Chain",
         "soft_tiers_2": "Soft Tiers: Relaxed 3-Tier",
         "conditional_neg_top_anchor": "Conditional- Top Neg Anchor",
@@ -130,7 +157,6 @@ def parse_label_name(name):
         "random_false_val_lt_conditional_not": "Random False Val. <= Conditional Neg.",
         "phylo_pos_gt_curated_pos": "Curated Pos. < Phylogenetic Pos.",
         "curated_neg_lt_phylo_neg": "Curated Neg. < Phylogenetic Neg.",
-        # Ontology indicators
         "IS_MF": "Ontology = MF",
         "IS_CC": "Ontology = CC",
         "IS_BP": "Ontology = BP",
@@ -139,18 +165,16 @@ def parse_label_name(name):
 
 
 def format_rule_axis_label(col_name):
-    """
-    Format boolean rule names for Panel B without raw variable names:
-      - Nuclear rules: '[A] All Neg. < All Pos.'
-      - Composite rules: 'Soft Tiers: Strict Chain\n(A ∧ E ∧ H)'
-    """
+    """Format boolean rule names for Panel D with [A]-[H] for atomic rules and [R1]-[R4] for apriori rules."""
     base_name = parse_label_name(col_name)
     if col_name in NUCLEAR_RULE_LETTERS:
         letter = NUCLEAR_RULE_LETTERS[col_name]
         return f"[{letter}] {base_name}"
     if col_name in COMPOSITE_RULE_EXPRESSIONS:
+        r_tag = COMPOSITE_RULE_NAMES.get(col_name, "")
         expr = COMPOSITE_RULE_EXPRESSIONS[col_name]
-        return f"{base_name}\n({expr})"
+        prefix = f"[{r_tag}] " if r_tag else ""
+        return f"{prefix}{base_name}\n({expr})"
     return base_name
 
 
@@ -170,15 +194,15 @@ def adjust_pvalues_bh(p_vals):
     return out
 
 
-def format_pvalue_rounded(p_val, prefix="p"):
-    """Return a compact, rounded numeric p-value string."""
+def format_pvalue_number(p_val):
+    """Return a compact, rounded numeric p-value string (without prefix)."""
     if pd.isna(p_val):
-        return f"{prefix}=NA"
+        return "NA"
     if p_val < 1e-3:
-        return f"{prefix}={p_val:.1e}"
+        return f"{p_val:.1e}"
     if p_val < 0.01:
-        return f"{prefix}={p_val:.3f}"
-    return f"{prefix}={p_val:.2f}"
+        return f"{p_val:.3f}"
+    return f"{p_val:.2f}"
 
 
 def assign_exclusive_quality_tier(row):
@@ -229,54 +253,339 @@ def resolve_paths_and_load_data(arg_path):
 
 
 # =============================================================================
-# 2. SCATTER PLOT OF RAW SOFT LABELS VS. SCORE
+# 2. PANEL A & PANEL B HELPER FUNCTIONS
 # =============================================================================
-def plot_soft_label_scatter(df, evi_exp_res_dir, score_cols=None):
-    """Generate the soft_optimization_test.png scatter plot."""
-    if score_cols is None:
-        score_cols = ["Sort Score"]
-
-    df_plot = []
-    for _, row in df.iterrows():
-        for label_name, labelc in SOFT_LABEL_COLORS.items():
-            df_plot.append({
+def build_long_scatter_df(df, palette=None):
+    """Flatten the 7 soft-label columns into a long DataFrame of 2,100 points."""
+    if palette is None:
+        palette = SOFT_LABEL_COLORS
+    rows = []
+    for run_idx, row in df.iterrows():
+        for label_name, labelc in palette.items():
+            rows.append({
+                "run_idx": run_idx,
+                "raw_label": label_name,
                 "legend": parse_label_name(label_name),
                 "color": labelc,
-                "value": row[label_name],
+                "value": float(row[label_name]),
                 "Ontology": row["Ontology"],
-                "OWA Score": row["OWA Score"],
-                "CWA Score": row["CWA Score"],
-                "Sort Score": row["Sort Score"],
+                "OWA Score": float(row["OWA Score"]),
+                "CWA Score": float(row["CWA Score"]),
+                "Sort Score": float(row["Sort Score"]),
+                "Sort Score Norm": float(row.get("Sort Score Norm", row["Sort Score"])),
             })
-    df_plot = pd.DataFrame(df_plot)
+    return pd.DataFrame(rows)
 
-    fig, axes = plt.subplots(1, len(score_cols), figsize=(10, 8))
-    axes_list = [axes[i] for i in range(len(score_cols))] if len(score_cols) > 1 else [axes]
 
-    for label, label_df in df_plot.groupby("legend"):
-        for ax, score_col in zip(axes_list, score_cols):
-            ax.scatter(
-                label_df["value"],
-                label_df[score_col] * 100.0,
-                s=280,
-                alpha=0.75,
-                c=label_df["color"],
-                marker=thin_horizontal_rect,
-                label=label,
-            )
-            ax.set_xlabel("Soft Label Value", fontsize=10, fontweight="bold")
-            score_label = score_col if score_col != "Sort Score" else "Overall Score"
-            ax.set_ylabel(f"{score_label} (%)", fontsize=10, fontweight="bold")
-            ax.set_title(f"Soft Label Value vs {score_col}", fontsize=12, fontweight="bold")
-            ax.grid(True, linestyle="--", alpha=0.5, zorder=0)
-            ax.set_xlim(0, 1)
+def draw_panel_a_scatter(
+    ax,
+    df,
+    fill_alpha=0.70,
+    bg_color="#dcdcdc",
+    seed=42,
+    title="A. Classification Performance with Random Soft Label Values",
+):
+    """
+    Render Panel A: Classification Performance with Random Soft Label Values.
+      - Legend ordered intuitively: py-, de-, cu-, rd-, co-, cu+, py+
+      - Elite (90%-100%) vertical text box shifted further left for clean separation from ticks
+    """
+    df_plot = build_long_scatter_df(df, palette=SOFT_LABEL_COLORS)
+    df_shuffled = df_plot.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+    sizes = [300] * len(df_shuffled)
+    face_rgba = [to_rgba(c, alpha=fill_alpha) for c in df_shuffled["color"]]
 
-    axes_list[-1].legend(loc="lower right", bbox_to_anchor=(0.98, 0.02))
+    ax.set_facecolor(bg_color)
+    ax.scatter(
+        df_shuffled["value"],
+        df_shuffled["Sort Score Norm"] * 100.0,
+        s=sizes,
+        facecolors=face_rgba,
+        edgecolors="none",
+        linewidths=0,
+        marker="o",
+        zorder=3,
+    )
+
+    # Show only the Elite range (90% to 100%) and vertical label on the left axis
+    n_elite = int((df["Sort Score Norm"] >= 0.90).sum())
+    elite_color = "#1f4e1b"
+    ax.axhline(
+        90.0,
+        color=elite_color,
+        linestyle="--",
+        linewidth=1.8,
+        alpha=0.90,
+        zorder=4,
+    )
+    ax.axhspan(90.0, 100.0, color="#6D863C", alpha=0.14, zorder=1)
+
+    # Vertical bracket and "Elite ({n} tests)" label placed with extra separation to the left of ticks
+    trans_y = ax.get_yaxis_transform()
+    ax.plot(
+        [-0.082, -0.082],
+        [90.0, 100.0],
+        transform=trans_y,
+        color=elite_color,
+        linewidth=2.8,
+        solid_capstyle="butt",
+        clip_on=False,
+        zorder=6,
+    )
+    ax.plot(
+        [-0.082, -0.064],
+        [90.0, 90.0],
+        transform=trans_y,
+        color=elite_color,
+        linewidth=2.2,
+        clip_on=False,
+        zorder=6,
+    )
+    ax.plot(
+        [-0.082, -0.064],
+        [100.0, 100.0],
+        transform=trans_y,
+        color=elite_color,
+        linewidth=2.2,
+        clip_on=False,
+        zorder=6,
+    )
+    ax.text(
+        -0.122,
+        95.0,
+        f"Elite ({n_elite} tests)",
+        transform=trans_y,
+        rotation=90,
+        ha="center",
+        va="center",
+        fontsize=9.8,
+        fontweight="bold",
+        color=elite_color,
+        bbox=dict(
+            boxstyle="round,pad=0.22",
+            fc="#eef4e8",
+            ec=elite_color,
+            lw=1.1,
+            alpha=0.96,
+        ),
+        clip_on=False,
+        zorder=7,
+    )
+
+    ax.set_xlabel("Soft Label Value", fontsize=10.5, fontweight="bold")
+    ax.set_ylabel("Normalized Overall Score (%)", fontsize=10.5, fontweight="bold", labelpad=20)
+    ax.set_title(title, fontsize=12.5, fontweight="bold", pad=10)
+    ax.set_yticks([0, 20, 40, 60, 80, 90, 100])
+    ax.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
+    ax.tick_params(axis="both", labelsize=9.8)
+    ax.grid(True, linestyle="--", alpha=0.35, color="#888888", zorder=0)
+    ax.set_xlim(-0.04, 1.04)
+    ax.set_ylim(-2.5, 103.0)
+
+    # Order legend explicitly: py-, de-, cu-, rd-, co-, cu+, py+
+    legend_handles = [
+        plt.scatter(
+            [],
+            [],
+            s=160,
+            facecolors=to_rgba(SOFT_LABEL_COLORS[col_key], alpha=0.80),
+            edgecolors="none",
+            linewidths=0,
+            marker="o",
+            label=parse_label_name(col_key),
+        )
+        for col_key in LEGEND_LABEL_ORDER
+    ]
+    ax.legend(
+        handles=legend_handles,
+        loc="lower right",
+        bbox_to_anchor=(0.98, 0.02),
+        framealpha=0.92,
+        facecolor="white",
+        fontsize=9.2,
+    )
+
+
+def plot_soft_label_scatter(df, evi_exp_res_dir):
+    """Standalone Panel A export (`soft_optimization_test.png`)."""
+    fig, ax = plt.subplots(figsize=(8, 12), facecolor="white")
+    draw_panel_a_scatter(
+        ax,
+        df,
+        title="Classification Performance with Random Soft Label Values",
+    )
     fig.tight_layout()
     out_path = os.path.join(evi_exp_res_dir, "soft_optimization_test.png")
-    fig.savefig(out_path, dpi=150)
+    fig.savefig(out_path, dpi=160, bbox_inches="tight")
     plt.close(fig)
     print(f"[Saved scatter figure to: {out_path}]")
+    return out_path
+
+
+def draw_panel_b_evi_values_scale(ax, df):
+    """
+    Render Panel B: Soft Labeling Scheme With Best Performance (extra compact height)
+    Adapted from `plot_evi_values_scale` in `evidence_exploration-4-plot.py`,
+    using the exact `SOFT_LABEL_COLORS` from Panel A.
+    """
+    labels = [
+        "phylo",
+        "curated",
+        "conditional_not",
+        "curated_not",
+        "derived_not",
+        "phylo_not",
+        "Random False Val",
+    ]
+
+    df_lines = []
+    for ont in ["MF", "CC", "BP"]:
+        df_ont = df[df["Ontology"] == ont].sort_values(by="Sort Score", ascending=False)
+        if len(df_ont) == 0:
+            continue
+        top_row = df_ont.iloc[0]
+
+        params = {}
+        if "Parameters" in top_row and pd.notna(top_row["Parameters"]):
+            try:
+                params = json.loads(top_row["Parameters"])
+            except Exception:
+                params = {}
+
+        for label in labels:
+            val = params.get(label, top_row.get(label, np.nan))
+            if pd.isna(val):
+                continue
+            if not ("False" in label or "_not" in label):
+                label2 = label + "_yes"
+            else:
+                label2 = label
+            if label2 == "Random False Val":
+                label2 = "random_not"
+            df_lines.append({"evi_type": label2, "label_value": float(val), "ontology": ont})
+
+    df_scale = pd.DataFrame(df_lines)
+
+    def format_evi(name):
+        parts = name.split("_")
+        if len(parts) == 2:
+            return f"{parts[0].capitalize()}\n({parts[1].capitalize()})"
+        return name
+
+    color_map = {
+        "phylo_not": SOFT_LABEL_COLORS["phylo_not"],
+        "derived_not": SOFT_LABEL_COLORS["derived_not"],
+        "curated_not": SOFT_LABEL_COLORS["curated_not"],
+        "random_not": SOFT_LABEL_COLORS["Random False Val"],
+        "conditional_not": SOFT_LABEL_COLORS["conditional_not"],
+        "curated_yes": SOFT_LABEL_COLORS["curated"],
+        "phylo_yes": SOFT_LABEL_COLORS["phylo"],
+    }
+
+    avg_x = df_scale.groupby("evi_type")["label_value"].mean().sort_values()
+
+    # Compact horizontal gray ontology bars
+    for y in [0, 1, 2]:
+        ax.hlines(y, xmin=-0.05, xmax=1.05, color="#b0b0b0", linewidth=4.2, zorder=1)
+
+    # Anti-overlap logic for bottom text boxes
+    label_xs = {}
+    current_x = -0.02
+    for evi, x_val in avg_x.items():
+        if x_val < 0.5:
+            target_x = max(x_val, current_x)
+            label_xs[evi] = target_x
+            current_x = target_x + 0.125
+        else:
+            label_xs[evi] = x_val
+
+    current_x = 1.03
+    for evi in reversed(list(avg_x.index)):
+        x_val = avg_x[evi]
+        if x_val >= 0.5:
+            target_x = min(x_val, current_x)
+            label_xs[evi] = target_x
+            current_x = target_x - 0.125
+
+    y_label = -0.70
+    Path = mpath.Path
+
+    for evi, _ in avg_x.items():
+        c = color_map[evi]
+        edge_c = "#d4a800" if evi == "random_not" else c
+        target_x = label_xs[evi]
+        display_name = format_evi(evi)
+
+        x_cc = df_scale[(df_scale["evi_type"] == evi) & (df_scale["ontology"] == "CC")]["label_value"].values[0]
+        x_bp = df_scale[(df_scale["evi_type"] == evi) & (df_scale["ontology"] == "BP")]["label_value"].values[0]
+        x_mf = df_scale[(df_scale["evi_type"] == evi) & (df_scale["ontology"] == "MF")]["label_value"].values[0]
+
+        ax.plot([x_cc, x_bp, x_mf], [0, 1, 2], color=edge_c, linewidth=2.2, zorder=2)
+        ax.scatter(
+            [x_cc, x_bp, x_mf],
+            [0, 1, 2],
+            color=c,
+            s=175,
+            zorder=3,
+            edgecolors="white" if evi != "random_not" else "#b58e00",
+            linewidth=1.6,
+        )
+
+        if abs(target_x - x_cc) < 0.005:
+            ax.plot([x_cc, x_cc], [0, y_label + 0.18], color=edge_c, linewidth=1.7, zorder=2)
+        else:
+            pp1 = (x_cc, 0)
+            pp2 = (x_cc, -0.28)
+            pp3 = (target_x, -0.28)
+            pp4 = (target_x, y_label + 0.18)
+            verts = [pp1, pp2, pp3, pp4]
+            codes = [Path.MOVETO, Path.CURVE4, Path.CURVE4, Path.CURVE4]
+            path = Path(verts, codes)
+            patch = mpatches.PathPatch(path, facecolor="none", lw=1.7, edgecolor=edge_c, zorder=2)
+            ax.add_patch(patch)
+
+        ax.text(
+            target_x,
+            y_label,
+            display_name,
+            ha="center",
+            va="center",
+            fontsize=7.9,
+            color="black",
+            bbox=dict(boxstyle="round,pad=0.18", fc="white", ec=edge_c, lw=1.1, alpha=1.0),
+            zorder=4,
+        )
+
+    ax.text(-0.08, 2, "MF", fontsize=9.8, fontweight="bold", ha="right", va="center", color="black")
+    ax.text(-0.08, 1, "BP", fontsize=9.8, fontweight="bold", ha="right", va="center", color="black")
+    ax.text(-0.08, 0, "CC", fontsize=9.8, fontweight="bold", ha="right", va="center", color="black")
+
+    ruler_y = 2.40
+    ax.plot([0, 1], [ruler_y, ruler_y], color="#555555", linewidth=1.7, zorder=1)
+    ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
+    for t in ticks:
+        ax.plot([t, t], [ruler_y, ruler_y + 0.08], color="#555555", linewidth=1.7, zorder=1)
+        ax.text(
+            t,
+            ruler_y + 0.12,
+            f"{t:.2f}",
+            ha="center",
+            va="bottom",
+            fontsize=9.3,
+            color="#333333",
+            fontweight="bold",
+        )
+        ax.plot([t, t], [0, ruler_y], color="#cccccc", linestyle="--", linewidth=1.0, zorder=0, alpha=0.6)
+
+    ax.axis("off")
+    ax.set_xlim(-0.15, 1.15)
+    ax.set_ylim(-0.95, 2.72)
+    ax.set_title(
+        "B. Soft Labeling Scheme With Best Performance",
+        fontsize=12.5,
+        fontweight="bold",
+        y=1.00,
+    )
 
 
 # =============================================================================
@@ -286,21 +595,11 @@ def engineer_features(df):
     """Engineer simplified boxplot-aligned quality tiers, nuclear rules [A]-[H], and margins."""
     target_score_col = "Sort Score Norm" if "Sort Score Norm" in df.columns else "Sort Score"
 
-    print("\n--- Simplified Boxplot-Aligned Quality Tiers (on Normalized Score [0, 1]) ---")
     for tier_name, (op, thr) in QUALITY_THRESHOLDS.items():
         if op == ">=":
             df[tier_name] = df[target_score_col] >= thr
         else:
             df[tier_name] = df[target_score_col] < thr
-        cnt_all = int(df[tier_name].sum())
-        cnt_by_ont = {
-            ont: int(df.loc[df["Ontology"] == ont, tier_name].sum())
-            for ont in ONTOLOGIES
-        }
-        print(
-            f"  {tier_name:6s} ({op} {thr:.2f}): Total={cnt_all:3d}/300 ({cnt_all/len(df):.1%}) "
-            f"| MF={cnt_by_ont['MF']:2d}, BP={cnt_by_ont['BP']:2d}, CC={cnt_by_ont['CC']:2d}"
-        )
 
     all_neg_max = df[NEG_LABELS].max(axis=1)
     pos_min = df[POS_LABELS].min(axis=1)
@@ -309,7 +608,6 @@ def engineer_features(df):
     real_min = df[REAL_NEG_COLS].min(axis=1)
     real_max = df[REAL_NEG_COLS].max(axis=1)
 
-    # Continuous margins and summary statistics
     df["pos_neg_inversion_count"] = sum(
         (df[n] >= df[p]).astype(int) for n in NEG_LABELS for p in POS_LABELS
     )
@@ -321,45 +619,42 @@ def engineer_features(df):
     df["neg_virt_real_center_diff"] = df["virtual_neg_mean"] - df["real_neg_mean"]
     df["real_neg_spread"] = real_max - real_min
 
-    # Nuclear boolean hierarchy rules [A]-[H]
+    # Nuclear rules [A]-[H] ordered by ascending BH-adjusted p-value (A = lowest p-value)
     df["neg_below_pos"] = all_neg_max < pos_min                                      # [A]
     df["natural_polarity_split"] = (all_neg_max < 0.50) & (pos_min > 0.50)           # [B]
     df["pos_to_virtual_margin_relevant"] = df["pos_to_virtual_margin"] >= 0.126      # [C]
-    df["virtual_neg_higher"] = real_max < virt_min                                   # [D]
+    df["derived_neg_le_conditional_neg"] = df["derived_not"] <= df["conditional_not"]  # [D]
     df["derived_neg_below_virtual_negs"] = df["derived_not"] <= virt_min             # [E]
-    df["derived_neg_le_conditional_neg"] = df["derived_not"] <= df["conditional_not"]  # [F]
+    df["virtual_neg_higher"] = real_max < virt_min                                   # [F]
     df["conditional_neg_gt_real_neg_median"] = df["conditional_not"] > df["real_neg_median"]  # [G]
     df["random_false_val_lt_conditional_not"] = df["Random False Val"] <= df["conditional_not"]  # [H]
 
-    # Composite soft-tier rules (evaluated in Panel B and Table S2, but EXCLUDED from rule mining inputs)
-    # 1. Soft Tiers: Strict Chain (A ∧ E ∧ H)
-    df["soft_tiers_strict_chain"] = (
-        df["neg_below_pos"]
-        & df["derived_neg_below_virtual_negs"]
-        & df["random_false_val_lt_conditional_not"]
-    )
-    # 2. Soft Tiers: Relaxed 3-Tier (B ∧ E ∧ (D ∨ H))
-    df["soft_tiers_2"] = (
-        df["natural_polarity_split"]
-        & df["derived_neg_below_virtual_negs"]
-        & (df["virtual_neg_higher"] | df["random_false_val_lt_conditional_not"])
-    )
-    # 3. Conditional- Top Neg Anchor (B ∧ F ∧ G ∧ H)
+    # Composite / apriori rules [R1]-[R4]
     df["conditional_neg_top_anchor"] = (
         df["natural_polarity_split"]
         & df["derived_neg_le_conditional_neg"]
         & df["conditional_neg_gt_real_neg_median"]
         & df["random_false_val_lt_conditional_not"]
-    )
+    )  # [R1] (B ∧ D ∧ G ∧ H)
+    df["soft_tiers_2"] = (
+        df["natural_polarity_split"]
+        & df["derived_neg_below_virtual_negs"]
+        & (df["virtual_neg_higher"] | df["random_false_val_lt_conditional_not"])
+    )  # [R2] (B ∧ E ∧ (F ∨ H))
+    df["soft_tiers_strict_chain"] = (
+        df["neg_below_pos"]
+        & df["derived_neg_below_virtual_negs"]
+        & df["random_false_val_lt_conditional_not"]
+    )  # [R3] (A ∧ E ∧ H)
     df["strict_4tier"] = (
         df["neg_below_pos"]
         & df["virtual_neg_higher"]
         & df["random_false_val_lt_conditional_not"]
-    )
+    )  # [R4] (A ∧ F ∧ H)
 
     nuclear_cols = list(NUCLEAR_RULE_LETTERS.keys())
     composite_cols = list(COMPOSITE_RULE_EXPRESSIONS.keys())
-    bool_pattern_cols = composite_cols + nuclear_cols
+    bool_pattern_cols = nuclear_cols + composite_cols
 
     cont_engineered_cols = [
         "pos_to_virtual_margin",
@@ -384,30 +679,18 @@ def engineer_features(df):
 # 4. ALGORITHMIC COMPOSITE RULE MINING FROM NUCLEAR RULES [A]-[H] ONLY
 # =============================================================================
 def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min_confidence=0.74):
-    """
-    Mine composite boolean rules predicting simplified quality tiers (ELITE, GOOD)
-    strictly from the 8 nuclear rules [A]-[H] and the elementary virtual-ordering
-    disjunction (D ∨ H), WITHOUT including pre-defined composite rules as input features.
-
-    Uses mlxtend.frequent_patterns (apriori + association_rules) when available,
-    followed by minimal-generator and strict-confidence-gain pruning so only
-    non-redundant composite rules remain.
-    """
-    print("\n" + "=" * 80)
-    print("SCIENTIFIC RULE MINING FROM NUCLEAR RULES [A]-[H] (EXCLUDING COMPOSITE FEATURES)")
-    print("=" * 80)
-
-    # Build atomic rule basis A..H + elementary virtual-tier disjunction (D ∨ H)
+    """Mine composite boolean rules strictly from nuclear rules [A]-[H] and (F ∨ H)."""
     atom_df = pd.DataFrame(index=df.index)
     for col, letter in NUCLEAR_RULE_LETTERS.items():
         atom_df[letter] = df[col].astype(bool)
-    atom_df["(D ∨ H)"] = atom_df["D"] | atom_df["H"]
-    cand_atoms = ["A", "B", "C", "D", "E", "F", "G", "H", "(D ∨ H)"]
+    atom_df["(F ∨ H)"] = atom_df["F"] | atom_df["H"]
+    cand_atoms = ["A", "B", "C", "D", "E", "F", "G", "H", "(F ∨ H)"]
 
     known_composite_tags = {
-        "A ∧ E ∧ H": "Soft Tiers: Strict Chain [Target #1]",
-        "B ∧ E ∧ (D ∨ H)": "Soft Tiers: Relaxed 3-Tier [Target #2]",
-        "B ∧ F ∧ G ∧ H": "Conditional- Top Neg Anchor [Target #3]",
+        "B ∧ D ∧ G ∧ H": "[R1] Conditional- Top Neg Anchor",
+        "B ∧ E ∧ (F ∨ H)": "[R2] Soft Tiers: Relaxed 3-Tier",
+        "A ∧ E ∧ H": "[R3] Soft Tiers: Strict Chain",
+        "A ∧ F ∧ H": "[R4] Strict 4-Tier Hierarchy",
     }
 
     subsets = [("All_Runs", df.index)] + [
@@ -428,7 +711,6 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
                 continue
             base_rate = n_target / n_tot
 
-            # Enumerate candidate itemsets via mlxtend.apriori (or exact enumeration fallback)
             trans = sub_atoms[cand_atoms].copy()
             trans[t_col] = t_vec
             if HAS_MLXTEND:
@@ -440,14 +722,14 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
                 candidate_sets = [
                     tuple(sorted(ants, key=lambda x: cand_atoms.index(x)))
                     for ants in raw_ar["antecedents"]
-                    if len(ants) <= 4 and not ("(D ∨ H)" in ants and ("D" in ants or "H" in ants))
+                    if len(ants) <= 4 and not ("(F ∨ H)" in ants and ("F" in ants or "H" in ants))
                 ]
             else:
                 candidate_sets = [
                     comb
                     for k in range(1, 5)
                     for comb in combinations(cand_atoms, k)
-                    if not ("(D ∨ H)" in comb and ("D" in comb or "H" in comb))
+                    if not ("(F ∨ H)" in comb and ("F" in comb or "H" in comb))
                 ]
 
             cand_records = []
@@ -463,7 +745,6 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
                 if conf < min_confidence:
                     continue
 
-                # 1. Minimal generator check: reject if any proper subset has the exact same support
                 is_minimal = True
                 for sub_k in range(1, len(comb)):
                     for sub_c in combinations(comb, sub_k):
@@ -508,12 +789,11 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
                 continue
 
             c_df = pd.DataFrame(cand_records)
-            # 2. Canonical mask deduplication: if two formulas select identical rows, prefer
-            #    shorter length, threshold-free polarity rules (A/B over C), and simpler clauses
+
             def priority_key(row):
                 atoms = row["Atoms"]
                 has_c = 1 if "C" in atoms else 0
-                has_disj = 1 if "(D ∨ H)" in atoms else 0
+                has_disj = 1 if "(F ∨ H)" in atoms else 0
                 return (row["Rule_Length"], has_c, has_disj, atoms)
 
             c_df["_prio"] = c_df.apply(priority_key, axis=1)
@@ -523,8 +803,6 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
                 .drop(columns=["_prio"])
             )
 
-            # 3. Sub-rule confidence dominance: keep a composite rule only if it strictly
-            #    improves Confidence over all of its proper sub-rules
             kept_idx = []
             for idx, r in c_df.iterrows():
                 comb = r["Atoms"]
@@ -556,24 +834,6 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
     mined_rules_df = pd.concat(all_mined_rows, ignore_index=True) if all_mined_rows else pd.DataFrame()
     mined_out_path = os.path.join(evi_exp_res_dir, "soft_label_association_rules.tsv")
     mined_rules_df.to_csv(mined_out_path, sep="\t", index=False)
-
-    for (sub_name, t_col), grp in mined_rules_df.groupby(["Subset", "Quality_Target"], sort=False):
-        print(f"\n--- Mined Non-Redundant Rules | Subset: {sub_name} | Target: {t_col} ---")
-        show_cols = [
-            "Mined_Formula",
-            "Rule_Identity",
-            "N_Match",
-            "N_Rule_True",
-            "Confidence",
-            "Recall",
-            "Lift",
-            "F1_Score",
-            "Mean_Norm_Score",
-            "Fisher_p_adj_BH",
-        ]
-        print(grp[show_cols].head(10).to_string(index=False))
-
-    print(f"\n[Saved algorithmically mined composite rules to: {mined_out_path}]")
     return mined_rules_df
 
 
@@ -582,10 +842,6 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
 # =============================================================================
 def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_res_dir):
     """Run Mann-Whitney U, Point-Biserial, Rank-Biserial, and BH-FDR correction."""
-    print("\n" + "=" * 80)
-    print("MANN-WHITNEY U & RANK-BISERIAL TESTS FOR BOOLEAN PATTERN FEATURES")
-    print("=" * 80)
-
     subsets = [("All_Runs", df)] + [
         (ont, df[df["Ontology"] == ont]) for ont in ONTOLOGIES
     ]
@@ -645,8 +901,6 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
     pattern_stats_df = pd.DataFrame(pattern_stats_rows)
     pattern_stats_path = os.path.join(evi_exp_res_dir, "soft_label_pattern_stats.tsv")
     pattern_stats_df.to_csv(pattern_stats_path, sep="\t", index=False)
-    print(pattern_stats_df.to_string(index=False))
-    print(f"\n[Saved pattern statistical tests to: {pattern_stats_path}]")
     return pattern_stats_df
 
 
@@ -655,9 +909,6 @@ def analyze_boolean_patterns(df, bool_pattern_cols, target_score_col, evi_exp_re
 # =============================================================================
 def analyze_continuous_features(df, cont_engineered_cols, target_score_col, evi_exp_res_dir):
     """Evaluate continuous soft labels and engineered margins via Spearman & Pearson correlations."""
-    print("\n" + "=" * 80)
-    print("CONTINUOUS FEATURE CORRELATIONS (ALL RUNS & PER ONTOLOGY — NO RF IMPORTANCE)")
-    print("=" * 80)
     float_cols = list(SOFT_LABEL_COLORS.keys()) + cont_engineered_cols
 
     subsets = [("All_Runs", df)] + [
@@ -696,424 +947,83 @@ def analyze_continuous_features(df, cont_engineered_cols, target_score_col, evi_
     float_stats_df = pd.DataFrame(float_rows)
     float_stats_path = os.path.join(evi_exp_res_dir, "soft_label_float_correlations.tsv")
     float_stats_df.to_csv(float_stats_path, sep="\t", index=False)
-    print(float_stats_df.to_string(index=False))
-    print(f"\n[Saved continuous feature correlations to: {float_stats_path}]")
     return float_stats_df
 
 
 # =============================================================================
-# 7. PUBLICATION-READY MULTI-SHEET EXCEL EXPORT (PANDAS + OPENPYXL)
+# 7. PUBLICATION-READY MULTI-SHEET EXCEL EXPORT
 # =============================================================================
-def apply_sheet_styling(ws, col_formats, freeze_cell="C2"):
-    """Apply publication-ready formatting, explicit number formats, and auto-fitted widths."""
-    ws.views.sheetView[0].showGridLines = True
-    ws.page_setup.orientation = "landscape"
-    ws.page_setup.fitToWidth = 1
-    ws.page_setup.fitToHeight = 0
-    ws.sheet_properties.pageSetUpPr.fitToPage = True
-    ws.freeze_panes = freeze_cell
-
-    max_col = ws.max_column
-    max_row = ws.max_row
-
-    hdr_fill = PatternFill(start_color="1B365D", end_color="1B365D", fill_type="solid")
-    zebra_fill = PatternFill(start_color="F7F9FC", end_color="F7F9FC", fill_type="solid")
-    yes_fill = PatternFill(start_color="D1E7DD", end_color="D1E7DD", fill_type="solid")
-    no_fill = PatternFill(start_color="F8D7DA", end_color="F8D7DA", fill_type="solid")
-    vg_fill = PatternFill(start_color="D1E7DD", end_color="D1E7DD", fill_type="solid")
-    good_fill = PatternFill(start_color="E2F0D9", end_color="E2F0D9", fill_type="solid")
-    bad_fill = PatternFill(start_color="FCE4D6", end_color="FCE4D6", fill_type="solid")
-
-    hdr_font = Font(name="Calibri", size=10.5, bold=True, color="FFFFFF")
-    data_font = Font(name="Calibri", size=10, bold=False, color="111111")
-    bold_data_font = Font(name="Calibri", size=10, bold=True, color="111111")
-    yes_font = Font(name="Calibri", size=10, bold=True, color="0F5132")
-    no_font = Font(name="Calibri", size=10, bold=False, color="842029")
-
-    thin_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="thin", color="D9D9D9"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-    group_top_border = Border(
-        left=Side(style="thin", color="D9D9D9"),
-        right=Side(style="thin", color="D9D9D9"),
-        top=Side(style="medium", color="1B365D"),
-        bottom=Side(style="thin", color="D9D9D9"),
-    )
-
-    # Header row at Row 1
-    ws.row_dimensions[1].height = 28
-    for col_idx in range(1, max_col + 1):
-        c = ws.cell(row=1, column=col_idx)
-        c.fill = hdr_fill
-        c.font = hdr_font
-        c.border = thin_border
-        col_name = str(c.value or "")
-        _, align_h = col_formats.get(col_name, ("@", "left"))
-        c.alignment = Alignment(
-            horizontal=align_h, vertical="center", wrap_text=True
-        )
-
-    # Data rows from Row 2 onward
-    prev_group_val = None
-    for row_idx in range(2, max_row + 1):
-        ws.row_dimensions[row_idx].height = 20
-        first_col_val = str(ws.cell(row=row_idx, column=1).value or "")
-        is_new_group = (
-            prev_group_val is not None and first_col_val != prev_group_val
-        )
-        prev_group_val = first_col_val
-
-        for col_idx in range(1, max_col + 1):
-            c = ws.cell(row=row_idx, column=col_idx)
-            col_name = str(ws.cell(row=1, column=col_idx).value or "")
-            num_fmt, align_h = col_formats.get(col_name, ("@", "left"))
-
-            c.border = group_top_border if is_new_group else thin_border
-            c.font = bold_data_font if col_idx <= 2 else data_font
-            c.alignment = Alignment(horizontal=align_h, vertical="center")
-            if num_fmt != "@":
-                c.number_format = num_fmt
-
-            if row_idx % 2 == 0:
-                c.fill = zebra_fill
-
-            val_str = str(c.value or "").strip()
-            if val_str == "YES":
-                c.fill = yes_fill
-                c.font = yes_font
-            elif val_str == "NO":
-                c.fill = no_fill
-                c.font = no_font
-            elif val_str.startswith("1. ELITE") or "[Target #" in val_str:
-                c.fill = vg_fill
-                c.font = yes_font
-            elif val_str.startswith("2. GOOD"):
-                c.fill = good_fill
-            elif val_str.startswith("4. POOR"):
-                c.fill = bad_fill
-
-    # Auto-fit column widths
-    for col_idx in range(1, max_col + 1):
-        col_letter = get_column_letter(col_idx)
-        hdr_val = str(ws.cell(row=1, column=col_idx).value or "")
-        max_len = len(hdr_val)
-        for row_idx in range(2, max_row + 1):
-            val = ws.cell(row=row_idx, column=col_idx).value
-            if val is None:
-                continue
-            if isinstance(val, float):
-                val_str = f"{val:.4f}"
-            else:
-                val_str = str(val)
-            max_len = max(max_len, len(val_str))
-        ws.column_dimensions[col_letter].width = min(max(max_len + 4, 12), 40)
-
-
 def export_publication_excel(df, float_stats_df, pattern_stats_df, mined_rules_df, out_excel_path):
-    """
-    Build a publication-ready multi-sheet Excel workbook using pandas.ExcelWriter + openpyxl:
-      - Sheet 1 ('1_Continuous_Features'): Continuous soft labels & margins sorted by |Spearman r|
-      - Sheet 2 ('2_Boolean_Rules'): Composite & nuclear boolean rules + mined rule discovery metrics
-      - Sheet 3 ('3_All_300_Tests'): All 300 benchmark runs sorted by Ontology & Overall Sort Score
-      - Sheet 4 ('4_Mined_Composite_Rules'): Complete algorithmic rule-mining table from [A]-[H]
-    """
-    subset_order = {"All_Runs": 0, "MF": 1, "BP": 2, "CC": 3}
-
-    # -------------------------------------------------------------------------
-    # SHEET 1 DATAFRAME: Continuous Features Analysis (Correlations & p-values only)
-    # -------------------------------------------------------------------------
-    s1 = float_stats_df.copy()
-    s1["_sub_ord"] = s1["Subset"].map(subset_order).fillna(9)
-    s1["_abs_r"] = s1["Spearman_r"].abs()
-    s1 = s1.sort_values(
-        by=["_sub_ord", "_abs_r"],
-        ascending=[True, False],
-    ).drop(columns=["_sub_ord", "_abs_r"])
-
-    s1_rename = {
-        "Subset": "Ontology Subset",
-        "Display_Name": "Feature Name",
-        "Feature_Group": "Feature Category",
-        "Spearman_r": "Spearman r",
-        "Spearman_p_adj_BH": "Spearman p (BH-FDR)",
-        "Pearson_r": "Pearson r",
-        "Pearson_p_adj_BH": "Pearson p (BH-FDR)",
-        "Spearman_p": "Spearman p (Raw)",
-        "Pearson_p": "Pearson p (Raw)",
-        "Soft_Label": "Variable Code",
-    }
-    s1 = s1[list(s1_rename.keys())].rename(columns=s1_rename)
-
-    # -------------------------------------------------------------------------
-    # SHEET 2 DATAFRAME: Boolean Pattern Rules Analysis
-    # -------------------------------------------------------------------------
-    s2 = pattern_stats_df.copy()
-    s2["_sub_ord"] = s2["Subset"].map(subset_order).fillna(9)
-    s2["_cat_ord"] = np.where(s2["Rule_Category"] == "Composite Rule", 0, 1)
-    s2 = s2.sort_values(
-        by=["_sub_ord", "_cat_ord", "Mean_Diff"],
-        ascending=[True, True, False],
-    ).drop(columns=["_sub_ord", "_cat_ord"])
-
-    s2_rename = {
-        "Subset": "Ontology Subset",
-        "Rule_Label": "Boolean Rule & Formula",
-        "Rule_Category": "Rule Category",
-        "Mean_Diff": "Mean Score Diff (Δ)",
-        "MannWhitney_p_adj_BH": "Mann-Whitney p (BH-FDR)",
-        "Rank_Biserial_Effect": "Rank-Biserial Effect",
-        "Mean_Score_True": "Mean Score (True)",
-        "Mean_Score_False": "Mean Score (False)",
-        "Median_Score_True": "Median Score (True)",
-        "Median_Score_False": "Median Score (False)",
-        "N_True": "N (True)",
-        "N_False": "N (False)",
-        "ELITE_in_True": "ELITE Count (True)",
-        "ELITE_Recall": "ELITE Recall",
-        "GOOD_Precision": "GOOD Precision (True)",
-        "POOR_in_True": "POOR Count (True)",
-        "Point_Biserial_r": "Point-Biserial r",
-        "MannWhitney_p_value": "Mann-Whitney p (Raw)",
-        "Pattern": "Variable Code",
-    }
-    s2 = s2[list(s2_rename.keys())].rename(columns=s2_rename)
-
-    # -------------------------------------------------------------------------
-    # SHEET 3 DATAFRAME: All 300 Benchmark Runs Detailed
-    # -------------------------------------------------------------------------
-    s3 = df.copy()
-    ont_order = {"MF": 0, "BP": 1, "CC": 2}
-    s3["_ont_ord"] = s3["Ontology"].map(ont_order).fillna(9)
-    s3 = s3.sort_values(
-        by=["_ont_ord", "Sort Score"], ascending=[True, False]
-    ).drop(columns=["_ont_ord"])
-
-    bool_cols_to_yes_no = [
-        "soft_tiers_strict_chain",
-        "soft_tiers_2",
-        "conditional_neg_top_anchor",
-        "strict_4tier",
-        "neg_below_pos",
-        "natural_polarity_split",
-        "pos_to_virtual_margin_relevant",
-        "virtual_neg_higher",
-        "derived_neg_below_virtual_negs",
-        "derived_neg_le_conditional_neg",
-        "conditional_neg_gt_real_neg_median",
-        "random_false_val_lt_conditional_not",
-    ]
-    for b_col in bool_cols_to_yes_no:
-        if b_col in s3.columns:
-            s3[b_col] = np.where(s3[b_col].astype(bool), "YES", "NO")
-
-    s3_rename = {
-        "Ontology": "Ontology",
-        "Ontology_Rank": "Ontology Rank",
-        "Quality_Tier": "Quality Tier",
-        "Sort Score": "Overall Sort Score",
-        "Sort Score Norm": "Normalized Sort Score",
-        "OWA Score": "OWA Score",
-        "CWA Score": "CWA Score",
-        "OWA Fmax (Inverse-Weighted)": "OWA Fmax (Inv-Weighted)",
-        "CAFA Weighted Fmax": "CAFA Weighted Fmax",
-        "soft_tiers_strict_chain": "Strict Chain (A ∧ E ∧ H)",
-        "soft_tiers_2": "Relaxed 3-Tier (B ∧ E ∧ (D ∨ H))",
-        "conditional_neg_top_anchor": "Cond- Top Anchor (B ∧ F ∧ G ∧ H)",
-        "strict_4tier": "Strict 4-Tier Hierarchy",
-        "phylo": "Phylogenetic+ (PY+)",
-        "curated": "Curated+ (CU+)",
-        "conditional_not": "Conditional- (CO-)",
-        "Random False Val": "Random- (RA-)",
-        "curated_not": "Curated- (CU-)",
-        "phylo_not": "Phylogenetic- (PY-)",
-        "derived_not": "Derived- (DE-)",
-        "pos_to_virtual_margin": "Pos-to-Virtual Margin",
-        "virtual_to_real_margin": "Virtual-to-Real Margin",
-        "real_neg_median": "Real Negatives Median",
-        "real_neg_mean": "Real Negatives Mean",
-        "virtual_neg_mean": "Virtual Negatives Mean",
-        "neg_virt_real_center_diff": "Neg Virt-to-Real Center Diff",
-        "real_neg_spread": "Real Negatives Spread",
-        "pos_neg_inversion_count": "Pos/Neg Inversion Count",
-        "neg_below_pos": "[A] All Neg. < All Pos.",
-        "natural_polarity_split": "[B] All Neg. < 0.50 < All Pos.",
-        "pos_to_virtual_margin_relevant": "[C] Margin Virt-Pos >= 0.13",
-        "virtual_neg_higher": "[D] Real Neg. < Virtual Neg.",
-        "derived_neg_below_virtual_negs": "[E] Derived Neg. <= Min(Virt)",
-        "derived_neg_le_conditional_neg": "[F] Derived Neg. <= Cond. Neg.",
-        "conditional_neg_gt_real_neg_median": "[G] Cond. Neg. > Median(Real)",
-        "random_false_val_lt_conditional_not": "[H] Random- <= Cond. Neg.",
-        "OWA Weighted MCC": "OWA Weighted MCC",
-        "OWA Weighted AUPRC": "OWA Weighted AUPRC",
-        "CAFA Weighted MCC": "CAFA Weighted MCC",
-        "CAFA AUPRC": "CAFA AUPRC",
-    }
-    s3_cols = [c for c in s3_rename.keys() if c in s3.columns]
-    s3 = s3[s3_cols].rename(columns=s3_rename)
-
-    # -------------------------------------------------------------------------
-    # SHEET 4 DATAFRAME: Algorithmically Mined Composite Rules from [A]-[H]
-    # -------------------------------------------------------------------------
-    s4 = mined_rules_df.copy()
-    s4_rename = {
-        "Subset": "Ontology Subset",
-        "Quality_Target": "Quality Tier Target",
-        "Mined_Formula": "Mined Logical Formula",
-        "Rule_Identity": "Rule Classification",
-        "Confidence": "Precision / Confidence",
-        "Recall": "Target Recall",
-        "F1_Score": "F1 Score",
-        "Lift": "Apriori Lift",
-        "Fisher_p_adj_BH": "Fisher p (BH-FDR)",
-        "N_Match": "Target Matches",
-        "N_Rule_True": "Total Rule Matches",
-        "Support": "Support",
-        "Mean_Norm_Score": "Mean Norm Score",
-        "Min_Norm_Score": "Min Norm Score",
-        "Rule_Length": "Clause Count",
-        "Fisher_p_value": "Fisher p (Raw)",
-    }
-    s4 = s4[list(s4_rename.keys())].rename(columns=s4_rename)
-
+    """Build the multi-sheet Excel workbook."""
     with pd.ExcelWriter(out_excel_path, engine="openpyxl") as writer:
-        s1.to_excel(writer, sheet_name="1_Continuous_Features", index=False)
-        s2.to_excel(writer, sheet_name="2_Boolean_Rules", index=False)
-        s3.to_excel(writer, sheet_name="3_All_300_Tests", index=False)
-        s4.to_excel(writer, sheet_name="4_Mined_Composite_Rules", index=False)
-
-        wb = writer.book
-        s1_formats = {
-            "Ontology Subset": ("@", "left"),
-            "Feature Name": ("@", "left"),
-            "Feature Category": ("@", "left"),
-            "Spearman r": ("+0.0000;-0.0000;0.0000", "right"),
-            "Spearman p (BH-FDR)": ("0.00E+00", "right"),
-            "Pearson r": ("+0.0000;-0.0000;0.0000", "right"),
-            "Pearson p (BH-FDR)": ("0.00E+00", "right"),
-            "Spearman p (Raw)": ("0.00E+00", "right"),
-            "Pearson p (Raw)": ("0.00E+00", "right"),
-            "Variable Code": ("@", "left"),
-        }
-        apply_sheet_styling(wb["1_Continuous_Features"], s1_formats, freeze_cell="C2")
-
-        s2_formats = {
-            "Ontology Subset": ("@", "left"),
-            "Boolean Rule & Formula": ("@", "left"),
-            "Rule Category": ("@", "left"),
-            "Mean Score Diff (Δ)": ("+0.0000;-0.0000;0.0000", "right"),
-            "Mann-Whitney p (BH-FDR)": ("0.00E+00", "right"),
-            "Rank-Biserial Effect": ("+0.0000;-0.0000;0.0000", "right"),
-            "Mean Score (True)": ("0.0000", "right"),
-            "Mean Score (False)": ("0.0000", "right"),
-            "Median Score (True)": ("0.0000", "right"),
-            "Median Score (False)": ("0.0000", "right"),
-            "N (True)": ("#,##0", "right"),
-            "N (False)": ("#,##0", "right"),
-            "ELITE Count (True)": ("#,##0", "right"),
-            "ELITE Recall": ("0.0%", "right"),
-            "GOOD Precision (True)": ("0.0%", "right"),
-            "POOR Count (True)": ("#,##0", "right"),
-            "Point-Biserial r": ("+0.0000;-0.0000;0.0000", "right"),
-            "Mann-Whitney p (Raw)": ("0.00E+00", "right"),
-            "Variable Code": ("@", "left"),
-        }
-        apply_sheet_styling(wb["2_Boolean_Rules"], s2_formats, freeze_cell="C2")
-
-        s3_formats = {
-            "Ontology": ("@", "left"),
-            "Ontology Rank": ("#,##0", "right"),
-            "Quality Tier": ("@", "left"),
-            "Overall Sort Score": ("0.0000", "right"),
-            "Normalized Sort Score": ("0.0000", "right"),
-            "OWA Score": ("0.0000", "right"),
-            "CWA Score": ("0.0000", "right"),
-            "OWA Fmax (Inv-Weighted)": ("0.0000", "right"),
-            "CAFA Weighted Fmax": ("0.0000", "right"),
-            "Strict Chain (A ∧ E ∧ H)": ("@", "center"),
-            "Relaxed 3-Tier (B ∧ E ∧ (D ∨ H))": ("@", "center"),
-            "Cond- Top Anchor (B ∧ F ∧ G ∧ H)": ("@", "center"),
-            "Phylogenetic+ (PY+)": ("0.00", "right"),
-            "Curated+ (CU+)": ("0.00", "right"),
-            "Conditional- (CO-)": ("0.00", "right"),
-            "Random- (RA-)": ("0.00", "right"),
-            "Curated- (CU-)": ("0.00", "right"),
-            "Phylogenetic- (PY-)": ("0.00", "right"),
-            "Derived- (DE-)": ("0.00", "right"),
-            "Pos-to-Virtual Margin": ("+0.00;-0.00;0.00", "right"),
-            "Virtual-to-Real Margin": ("+0.00;-0.00;0.00", "right"),
-            "Real Negatives Median": ("0.0000", "right"),
-            "Real Negatives Mean": ("0.0000", "right"),
-            "Virtual Negatives Mean": ("0.0000", "right"),
-            "Neg Virt-to-Real Center Diff": ("+0.0000;-0.0000;0.0000", "right"),
-            "Real Negatives Spread": ("0.00", "right"),
-            "Pos/Neg Inversion Count": ("#,##0", "right"),
-            "[A] All Neg. < All Pos.": ("@", "center"),
-            "[B] All Neg. < 0.50 < All Pos.": ("@", "center"),
-            "[C] Margin Virt-Pos >= 0.13": ("@", "center"),
-            "[D] Real Neg. < Virtual Neg.": ("@", "center"),
-            "[E] Derived Neg. <= Min(Virt)": ("@", "center"),
-            "[F] Derived Neg. <= Cond. Neg.": ("@", "center"),
-            "[G] Cond. Neg. > Median(Real)": ("@", "center"),
-            "[H] Random- <= Cond. Neg.": ("@", "center"),
-            "OWA Weighted MCC": ("0.0000", "right"),
-            "OWA Weighted AUPRC": ("0.0000", "right"),
-            "CAFA Weighted MCC": ("0.0000", "right"),
-            "CAFA AUPRC": ("0.0000", "right"),
-        }
-        apply_sheet_styling(wb["3_All_300_Tests"], s3_formats, freeze_cell="E2")
-
-        s4_formats = {
-            "Ontology Subset": ("@", "left"),
-            "Quality Tier Target": ("@", "left"),
-            "Mined Logical Formula": ("@", "left"),
-            "Rule Classification": ("@", "left"),
-            "Precision / Confidence": ("0.0%", "right"),
-            "Target Recall": ("0.0%", "right"),
-            "F1 Score": ("0.0000", "right"),
-            "Apriori Lift": ("0.00", "right"),
-            "Fisher p (BH-FDR)": ("0.00E+00", "right"),
-            "Target Matches": ("#,##0", "right"),
-            "Total Rule Matches": ("#,##0", "right"),
-            "Support": ("0.0%", "right"),
-            "Mean Norm Score": ("0.0000", "right"),
-            "Min Norm Score": ("0.0000", "right"),
-            "Clause Count": ("#,##0", "right"),
-            "Fisher p (Raw)": ("0.00E+00", "right"),
-        }
-        apply_sheet_styling(wb["4_Mined_Composite_Rules"], s4_formats, freeze_cell="D2")
-
-    print(f"[Saved publication-ready multi-sheet Excel workbook to: {out_excel_path}]")
+        float_stats_df.to_excel(writer, sheet_name="1_Continuous_Features", index=False)
+        pattern_stats_df.to_excel(writer, sheet_name="2_Boolean_Rules", index=False)
+        df.to_excel(writer, sheet_name="3_All_300_Tests", index=False)
+        mined_rules_df.to_excel(writer, sheet_name="4_Mined_Composite_Rules", index=False)
 
 
 # =============================================================================
-# 8. COMPACT TWO-ROW MULTI-ONTOLOGY RELATIONSHIPS VISUALIZATION (PANELS A & B)
+# 8. UNIFIED 4-PANEL PUBLICATION FIGURE (PANELS A, B, C, D + FLOW ARROWS)
 # =============================================================================
 def plot_relationships(
     df,
     float_stats_df,
+    pattern_stats_df,
     bool_pattern_cols,
     evi_exp_res_dir,
 ):
     """
-    Create a compact, high-readability 2-row figure (soft_optimization_relationships.png):
-      - Top Row (Panel A): Continuous Soft Labels & Engineered Margins Impact across Ontologies
-        (|Spearman r| for MF, BP, and CC with signed r and BH-FDR adjusted p-values — no RF bars).
-      - Bottom Row (Panel B): 3 seamless side-by-side boxplot panels (MF, BP, CC) over unnormalized
-        Overall Score (%), showing readable rule names (nuclear letters [A]-[H] and composite boolean
-        expressions) only on the leftmost panel, with no separating vertical spines.
+    Create the unified 4-panel figure (`soft_optimization_relationships.png`):
+      - Panel A (top-left): Classification Performance with Random Soft Label Values,
+        with legend ordered [py-, de-, cu-, rd-, co-, cu+, py+] and vertical 'Elite ({n} tests)'
+        separated cleanly on the left axis.
+      - Panel B (extra compact bottom-left): Soft Labeling Scheme With Best Performance.
+      - Panel C (top-right): Diverging horizontal bars centered at 0.0 (negative correlations
+        extending left, positive correlations extending right), annotated with 'R=X, P-value=Y'.
+      - Panel D (bottom-right): Blue ('True') and Orange ('False') boxplots with thicker lines
+        and circles across MF, BP, CC, with atomic rules [H]..[A] and apriori rules [R4]..[R1]
+        sorted strictly by BH-adjusted p-value descending (largest p-value at the top).
     """
-    fig = plt.figure(figsize=(12.0, 12.8))
-    gs = fig.add_gridspec(2, 1, height_ratios=[1.0, 1.05], hspace=0.25)
-    gs_bot = gs[1].subgridspec(1, 3, wspace=0.04)
+    fig = plt.figure(figsize=(24.0, 15.2), facecolor="white")
 
-    ax_flt = fig.add_subplot(gs[0])
-    ax_a_list = [fig.add_subplot(gs_bot[0, i]) for i in range(3)]
+    # Preserve user's parallel wspace=0.48
+    outer_gs = gridspec.GridSpec(
+        1, 2, figure=fig, width_ratios=[0.92, 1.52], wspace=0.48
+    )
+
+    # Left column: A even taller on top, B extra compact on bottom
+    gs_left = gridspec.GridSpecFromSubplotSpec(
+        2, 1, subplot_spec=outer_gs[0], height_ratios=[2.50, 0.52], hspace=0.22
+    )
+    ax_a = fig.add_subplot(gs_left[0, 0])
+    ax_b = fig.add_subplot(gs_left[1, 0])
+
+    # Right column: C on top, D on bottom (preserve user's hspace=0.32)
+    gs_right = gridspec.GridSpecFromSubplotSpec(
+        2, 1, subplot_spec=outer_gs[1], height_ratios=[0.95, 1.25], hspace=0.32
+    )
+    ax_c = fig.add_subplot(gs_right[0, 0])
+    gs_d = gridspec.GridSpecFromSubplotSpec(
+        1, 3, subplot_spec=gs_right[1, 0], wspace=0.04
+    )
+    ax_d_list = [fig.add_subplot(gs_d[0, i]) for i in range(3)]
 
     # -------------------------------------------------------------------------
-    # PANEL A (TOP ROW): Continuous Soft Labels & Engineered Margins (|Spearman r| Only)
+    # PANEL A: Classification Performance with Random Soft Label Values
+    # -------------------------------------------------------------------------
+    draw_panel_a_scatter(
+        ax_a,
+        df,
+        title="A. Classification Performance with Random Soft Label Values",
+    )
+
+    # -------------------------------------------------------------------------
+    # PANEL B: Soft Labeling Scheme With Best Performance (Extra Compact)
+    # -------------------------------------------------------------------------
+    draw_panel_b_evi_values_scale(ax_b, df)
+
+    # -------------------------------------------------------------------------
+    # PANEL C: Diverging Continuous Soft Labels & Margins Impact (Left=Neg, Right=Pos)
     # -------------------------------------------------------------------------
     all_runs_flt = float_stats_df[float_stats_df["Subset"] == "All_Runs"].copy()
     all_runs_flt["_abs_r"] = all_runs_flt["Spearman_r"].abs()
@@ -1123,93 +1033,106 @@ def plot_relationships(
 
     y_pos = np.arange(len(all_float_order))
     bar_h = 0.25
-    offsets = {
-        "MF": -1.0 * bar_h,
-        "BP": 0.0,
-        "CC": +1.0 * bar_h,
-    }
-
+    offsets = {"MF": -1.0 * bar_h, "BP": 0.0, "CC": +1.0 * bar_h}
     flt_lookup = float_stats_df.set_index(["Subset", "Soft_Label"])
 
+    text_colors_c = {
+        "MF": "#250C6F",
+        "BP": "#1f4599",
+        "CC": "#c44500",
+    }
+
+    # Central zero vertical axis separating negative (left) from positive (right) correlations
+    ax_c.axvline(0.0, color="#222222", linestyle="-", linewidth=1.3, zorder=3)
+
     for ont in ONTOLOGIES:
-        sp_abs_vals = [
-            abs(flt_lookup.loc[(ont, col), "Spearman_r"]) for col in all_float_order
-        ]
-        ax_flt.barh(
+        sp_signed_vals = [flt_lookup.loc[(ont, col), "Spearman_r"] for col in all_float_order]
+        ax_c.barh(
             y_pos + offsets[ont],
-            sp_abs_vals,
+            sp_signed_vals,
             height=bar_h,
-            label=f"|Spearman r| ({ont})",
+            label=f"Spearman R ({ont})",
             color=ONTOLOGY_SPEARMAN_COLORS[ont],
-            alpha=0.92,
+            alpha=0.90,
             edgecolor="white",
             linewidth=0.5,
+            zorder=2,
         )
-
         for i, col in enumerate(all_float_order):
             r_val = flt_lookup.loc[(ont, col), "Spearman_r"]
             p_adj = flt_lookup.loc[(ont, col), "Spearman_p_adj_BH"]
-            p_str = format_pvalue_rounded(p_adj, prefix="p")
-            ax_flt.text(
-                abs(r_val) + 0.008,
+            p_num = format_pvalue_number(p_adj)
+            if r_val >= 0:
+                x_txt = r_val + 0.015
+                ha_align = "left"
+            else:
+                x_txt = r_val - 0.015
+                ha_align = "right"
+            ax_c.text(
+                x_txt,
                 i + offsets[ont],
-                f"{ont}: r={r_val:+.2f} ({p_str})",
+                f"R={r_val:+.2f}, P-value={p_num}",
                 va="center",
-                ha="left",
-                fontsize=9.2,
-                color="#7a2e00" if ont == "MF" else ("#9c4c00" if ont == "BP" else "#7d5a00"),
+                ha=ha_align,
+                fontsize=8.3,
+                color=text_colors_c[ont],
                 fontweight="bold",
             )
 
     for idx in range(len(all_float_order) - 1):
-        ax_flt.axhline(idx + 0.5, color="#e0e0e0", linestyle="-", linewidth=0.8)
+        ax_c.axhline(idx + 0.5, color="#e0e0e0", linestyle="-", linewidth=0.8)
 
-    y_display_labels = [parse_label_name(col) for col in all_float_order]
-    ax_flt.set_yticks(y_pos)
-    ax_flt.set_yticklabels(y_display_labels, fontsize=11.0, fontweight="bold")
-    ax_flt.tick_params(axis="x", labelsize=10.5)
-    max_sp = float_stats_df["Spearman_r"].abs().max()
-    ax_flt.set_xlim(0, max(0.98, max_sp + 0.22))
-    ax_flt.set_xlabel(
-        "|Spearman Rank Correlation| (Annotated with Signed r & BH-Adjusted p-value)",
-        fontsize=11.5,
+    ax_c.set_yticks(y_pos)
+    ax_c.set_yticklabels([parse_label_name(col) for col in all_float_order], fontsize=10.5, fontweight="bold")
+    ax_c.tick_params(axis="x", labelsize=10.0)
+    ax_c.set_xlim(-1.26, 1.12)
+    ax_c.set_xlabel(
+        "Spearman Rank Correlation R (Negative Left, Positive Right; BH-Adjusted P-value)",
+        fontsize=10.8,
         fontweight="bold",
     )
-    ax_flt.set_title(
-        "A. Continuous Soft Labels & Engineered Margins Impact Across Ontologies (MF, BP, CC)",
-        fontsize=13.2,
+    ax_c.set_title(
+        "C. Correlation Between Soft Label Characteristics and Classification Performance",
+        fontsize=12.5,
         fontweight="bold",
         pad=10,
     )
-    ax_flt.legend(
-        title="Ontology",
-        loc="lower right",
-        framealpha=0.95,
-        fontsize=10.0,
-        title_fontsize=10.5,
-    )
-    ax_flt.grid(True, axis="x", linestyle="--", alpha=0.4)
+    ax_c.legend(title="Ontology", loc="lower right", framealpha=0.95, fontsize=9.5, title_fontsize=10.0)
+    ax_c.grid(True, axis="x", linestyle="--", alpha=0.4)
 
     # -------------------------------------------------------------------------
-    # PANEL B (BOTTOM ROW): 3 Seamless Subplots (MF, BP, CC) vs. Raw Overall Score (%)
+    # PANEL D: Patterns Associated With 'Elite' Performance (>= 90%)
+    #          - Blue for True (#2D5CCB), Orange for False (#ff5d00)
+    #          - Thicker boxplot lines and outlier circles
+    #          - Atomic rules [H]..[A] and Apriori rules [R4]..[R1] sorted by p-value descending
     # -------------------------------------------------------------------------
-    composite_cols = [
-        "soft_tiers_strict_chain",
-        "soft_tiers_2",
-        "conditional_neg_top_anchor",
-        "strict_4tier"
+    pat_p_lookup = pattern_stats_df.set_index(["Subset", "Pattern"])
+
+    nuclear_cols_raw = [c for c in NUCLEAR_RULE_LETTERS.keys() if c in bool_pattern_cols]
+    composite_cols_raw = [
+        c
+        for c in [
+            "conditional_neg_top_anchor",
+            "soft_tiers_2",
+            "soft_tiers_strict_chain",
+            "strict_4tier",
+        ]
+        if c in bool_pattern_cols
     ]
-    nuclear_cols = [
-        "neg_below_pos",
-        "natural_polarity_split",
-        "pos_to_virtual_margin_relevant",
-        "virtual_neg_higher",
-        "derived_neg_below_virtual_negs",
-        "derived_neg_le_conditional_neg",
-        "conditional_neg_gt_real_neg_median",
-        "random_false_val_lt_conditional_not",
-    ]
-    plot_bool_cols = [c for c in composite_cols + nuclear_cols if c in bool_pattern_cols]
+
+    # Sort both groups by overall BH-adjusted p-value descending (larger p-value at the top)
+    nuclear_cols = sorted(
+        nuclear_cols_raw,
+        key=lambda c: float(pat_p_lookup.loc[("All_Runs", c), "MannWhitney_p_adj_BH"]),
+        reverse=True,
+    )
+    composite_cols = sorted(
+        composite_cols_raw,
+        key=lambda c: float(pat_p_lookup.loc[("All_Runs", c), "MannWhitney_p_adj_BH"]),
+        reverse=True,
+    )
+
+    plot_bool_cols = nuclear_cols + composite_cols
     ordered_labels = [format_rule_axis_label(c) for c in plot_bool_cols]
 
     pat_long_df = df.melt(
@@ -1222,9 +1145,8 @@ def plot_relationships(
     pat_long_df["Overall Score (%)"] = pat_long_df["Sort Score"] * 100.0
     pat_long_df["Pattern_Label"] = pat_long_df["Pattern"].apply(format_rule_axis_label)
 
-    for idx_ont, (ont, ax_a) in enumerate(zip(ONTOLOGIES, ax_a_list)):
+    for idx_ont, (ont, ax_d) in enumerate(zip(ONTOLOGIES, ax_d_list)):
         ont_sub = pat_long_df[pat_long_df["Ontology"] == ont]
-
         sns.boxplot(
             data=ont_sub,
             x="Overall Score (%)",
@@ -1232,85 +1154,167 @@ def plot_relationships(
             order=ordered_labels,
             hue="State",
             hue_order=["True", "False"],
-            palette={"True": "#2e8b57", "False": "#cd5c5c"},
+            palette=BOXPLOT_RULE_PALETTE,
             width=0.72,
-            fliersize=2.8,
-            linewidth=1.0,
-            ax=ax_a,
+            fliersize=4.5,
+            linewidth=1.55,
+            ax=ax_d,
+            boxprops=dict(alpha=0.88, linewidth=1.55),
+            whiskerprops=dict(linewidth=1.55),
+            capprops=dict(linewidth=1.55),
+            medianprops=dict(linewidth=1.8, color="#1a1a1a"),
+            flierprops=dict(
+                marker="o",
+                markersize=4.5,
+                markeredgewidth=1.25,
+                markeredgecolor="#333333",
+                markerfacecolor="none",
+                alpha=0.85,
+            ),
         )
 
-        # Separate composite rules from nuclear rules [A]-[H] with a subtle dashed line
-        if len(composite_cols) > 0:
-            ax_a.axhline(
-                len(composite_cols) - 0.5,
-                color="#666666",
+        # Dashed divider separating atomic rules (top) from composite rules (bottom)
+        if len(nuclear_cols) > 0:
+            ax_d.axhline(
+                len(nuclear_cols) - 0.5,
+                color="#555555",
                 linestyle="--",
-                linewidth=1.2,
-                alpha=0.75,
+                linewidth=1.4,
+                alpha=0.80,
             )
 
-        # Light horizontal row separators
         for r_i in range(len(plot_bool_cols) - 1):
-            if r_i != len(composite_cols) - 1:
-                ax_a.axhline(r_i + 0.5, color="#e6e6e6", linestyle="-", linewidth=0.7)
+            if r_i != len(nuclear_cols) - 1:
+                ax_d.axhline(r_i + 0.5, color="#e6e6e6", linestyle="-", linewidth=0.7)
 
-        # Set ontology-specific X limits with clean padding and keep X ticks
         ont_scores = df.loc[df["Ontology"] == ont, "Sort Score"] * 100.0
         s_min, s_max = float(ont_scores.min()), float(ont_scores.max())
         pad = (s_max - s_min) * 0.05
-        ax_a.set_xlim(s_min - pad, s_max + pad)
+        ax_d.set_xlim(s_min - pad, s_max + pad)
+        ax_d.set_title(ONTOLOGY_TITLES[ont], fontsize=11.0, fontweight="bold", pad=6)
+        ax_d.tick_params(axis="x", labelsize=10.0)
+        ax_d.grid(True, axis="x", linestyle="--", alpha=0.45)
 
-        ax_a.set_title(ONTOLOGY_TITLES[ont], fontsize=11.8, fontweight="bold", pad=7)
-        ax_a.tick_params(axis="x", labelsize=10.5)
-        ax_a.grid(True, axis="x", linestyle="--", alpha=0.45)
-
-        # Show rule names only on the first subplot; remove inner vertical spines
         if idx_ont == 0:
-            ax_a.set_ylabel("")
-            ax_a.tick_params(axis="y", labelsize=10.5)
-            for lbl in ax_a.get_yticklabels():
+            ax_d.set_ylabel("")
+            ax_d.tick_params(axis="y", labelsize=9.6)
+            for lbl in ax_d.get_yticklabels():
                 lbl.set_fontweight("bold")
-            ax_a.spines["right"].set_visible(False)
-            ax_a.legend(
+            ax_d.spines["right"].set_visible(False)
+            ax_d.legend(
                 title="Rule State",
                 loc="lower left",
                 framealpha=0.95,
-                fontsize=9.6,
-                title_fontsize=10.2,
+                fontsize=9.0,
+                title_fontsize=9.5,
             )
         else:
-            ax_a.set_ylabel("")
-            ax_a.set_yticklabels([])
-            ax_a.tick_params(axis="y", left=False)
-            ax_a.spines["left"].set_visible(False)
+            ax_d.set_ylabel("")
+            ax_d.set_yticklabels([])
+            ax_d.tick_params(axis="y", left=False)
+            ax_d.spines["left"].set_visible(False)
             if idx_ont < len(ONTOLOGIES) - 1:
-                ax_a.spines["right"].set_visible(False)
-            if ax_a.get_legend() is not None:
-                ax_a.get_legend().remove()
+                ax_d.spines["right"].set_visible(False)
+            if ax_d.get_legend() is not None:
+                ax_d.get_legend().remove()
 
-        # Center the shared X-axis label on the middle ontology subplot
         if idx_ont == 1:
-            ax_a.set_xlabel("Overall Score (%)", fontsize=11.5, fontweight="bold", labelpad=7)
+            ax_d.set_xlabel("Overall Score (%)", fontsize=10.8, fontweight="bold", labelpad=6)
         else:
-            ax_a.set_xlabel("")
+            ax_d.set_xlabel("")
 
-    # Add unified Panel B header above the 3 ontology subplots
-    ax_a_list[1].text(
+        # On the rightmost subplot (CC), display only the overall BH-adjusted p-value ("P-Value=X")
+        if idx_ont == len(ONTOLOGIES) - 1:
+            for r_i, pat_col in enumerate(plot_bool_cols):
+                p_all = pat_p_lookup.loc[("All_Runs", pat_col), "MannWhitney_p_adj_BH"]
+                p_num = format_pvalue_number(p_all)
+                ax_d.text(
+                    1.025,
+                    r_i,
+                    f"P-Value={p_num}",
+                    transform=ax_d.get_yaxis_transform(),
+                    ha="left",
+                    va="center",
+                    fontsize=9.2,
+                    fontweight="bold",
+                    color="#1f4599" if p_all < 0.001 else "#333333",
+                    clip_on=False,
+                )
+
+    ax_d_list[1].text(
         0.5,
-        1.095,
-        "B. Boolean Pattern Rules vs. Overall Score (%) by Ontology",
-        transform=ax_a_list[1].transAxes,
+        1.09,
+        "D. Patterns Associated With 'Elite' Performance (>= 90%)",
+        transform=ax_d_list[1].transAxes,
         ha="center",
         va="bottom",
-        fontsize=13.2,
+        fontsize=12.5,
         fontweight="bold",
     )
 
-    fig.subplots_adjust(left=0.25, right=0.98, top=0.955, bottom=0.045)
+    fig.subplots_adjust(left=0.062, right=0.925, top=0.945, bottom=0.05)
+    fig.canvas.draw()
+
+    # -------------------------------------------------------------------------
+    # FLOW ARROWS CONNECTING A -> B, A -> C, and C -> D
+    # -------------------------------------------------------------------------
+    pos_a = ax_a.get_position()
+    pos_b = ax_b.get_position()
+    pos_c = ax_c.get_position()
+    pos_d_mid = ax_d_list[1].get_position()
+
+    arrow_style = "Simple,tail_width=3.2,head_width=12,head_length=11"
+    arrow_color = "#2c3e50"
+
+    # 1. Arrow from bottom of A to top of B
+    x_ab = pos_a.x0 + 0.50 * pos_a.width
+    y_a_bot = pos_a.y0 - 0.036
+    y_b_top = pos_b.y1 + 0.022
+    arr_ab = FancyArrowPatch(
+        (x_ab, y_a_bot),
+        (x_ab, y_b_top),
+        transform=fig.transFigure,
+        arrowstyle=arrow_style,
+        color=arrow_color,
+        alpha=0.88,
+        zorder=20,
+    )
+    fig.add_artist(arr_ab)
+
+    # 2. Arrow from right of A to left of C
+    x_a_right = pos_a.x1 + 0.012
+    x_c_left = pos_c.x0 - 0.095
+    y_ac = pos_c.y0 + 0.50 * pos_c.height
+    arr_ac = FancyArrowPatch(
+        (x_a_right, y_ac),
+        (x_c_left, y_ac),
+        transform=fig.transFigure,
+        arrowstyle=arrow_style,
+        color=arrow_color,
+        alpha=0.88,
+        zorder=20,
+    )
+    fig.add_artist(arr_ac)
+
+    # 3. Arrow from bottom of C to top of D
+    x_cd = pos_d_mid.x0 + 0.50 * pos_d_mid.width
+    y_c_bot = pos_c.y0 - 0.036
+    y_d_top = pos_d_mid.y1 + 0.052
+    arr_cd = FancyArrowPatch(
+        (x_cd, y_c_bot),
+        (x_cd, y_d_top),
+        transform=fig.transFigure,
+        arrowstyle=arrow_style,
+        color=arrow_color,
+        alpha=0.88,
+        zorder=20,
+    )
+    fig.add_artist(arr_cd)
+
     rel_fig_path = os.path.join(evi_exp_res_dir, "soft_optimization_relationships.png")
     fig.savefig(rel_fig_path, dpi=220, bbox_inches="tight")
     plt.close(fig)
-    print(f"\n[Saved relationship summary figure to: {rel_fig_path}]")
+    print(f"\n[Saved unified 4-panel figure to: {rel_fig_path}]")
 
 
 # =============================================================================
@@ -1321,9 +1325,9 @@ def main():
         raise ValueError("Usage: python evidence_exploration-6-plot_soft_labels.py <path_to_results_dir_or_tsv>")
 
     df, evi_exp_res_dir = resolve_paths_and_load_data(sys.argv[1])
-    plot_soft_label_scatter(df, evi_exp_res_dir)
-
     df, nuclear_cols, bool_pattern_cols, cont_engineered_cols, target_score_col = engineer_features(df)
+
+    plot_soft_label_scatter(df, evi_exp_res_dir)
     df.to_csv(os.path.join(evi_exp_res_dir, "df_engineered.csv"), index=False)
 
     mined_rules_df = mine_composite_rules_from_nuclear(df, evi_exp_res_dir)
@@ -1341,6 +1345,7 @@ def main():
     plot_relationships(
         df,
         float_stats_df,
+        pattern_stats_df,
         bool_pattern_cols,
         evi_exp_res_dir,
     )
