@@ -73,14 +73,6 @@ QUALITY_THRESHOLDS = {
 }
 
 # Nuclear rules ordered strictly by ascending BH-adjusted p-value (A = lowest p-value, H = largest p-value):
-#   A: neg_below_pos (p = 3.9e-32)
-#   B: natural_polarity_split (p = 1.3e-30)
-#   C: pos_to_virtual_margin_relevant (p = 2.0e-30)
-#   D: derived_neg_le_conditional_neg (p = 1.2e-15)
-#   E: derived_neg_below_virtual_negs (p = 1.4e-15)
-#   F: virtual_neg_higher (p = 8.5e-11)
-#   G: conditional_neg_gt_real_neg_median (p = 5.6e-08)
-#   H: random_false_val_lt_conditional_not (p = 8.5e-04)
 NUCLEAR_RULE_LETTERS = {
     "neg_below_pos": "A",
     "natural_polarity_split": "B",
@@ -109,8 +101,6 @@ COMPOSITE_RULE_EXPRESSIONS = {
     "strict_4tier": "A ∧ F ∧ H",
 }
 
-# Colors for Panel C (MF, BP, CC bars) and Panel D (Blue for True, Orange for False)
-# selected directly from SOFT_LABEL_COLORS in Panels A & B
 ONTOLOGY_SPEARMAN_COLORS = {
     "MF": SOFT_LABEL_COLORS["phylo"],        # "#250C6F" Deep Ultramarine Navy
     "BP": SOFT_LABEL_COLORS["curated"],      # "#2D5CCB" Bright Royal Blue
@@ -126,37 +116,37 @@ BOXPLOT_RULE_PALETTE = {
 def parse_label_name(name):
     """Map raw column names to readable display names."""
     alt_names = {
-        "phylo": "Phylogenetic+",
-        "curated": "Curated+",
-        "conditional_not": "Conditional-",
-        "Random False Val": "Random-",
-        "curated_not": "Curated-",
-        "derived_not": "Derived-",
-        "phylo_not": "Phylogenetic-",
+        "phylo": "Phylogenetic+ (PHY+)",
+        "curated": "Curated+ (CT+)",
+        "conditional_not": "Conditional- (CD-)",
+        "Random False Val": "Random- (RF-)",
+        "curated_not": "Curated- (CT-)",
+        "derived_not": "Derived- (DE-)",
+        "phylo_not": "Phylogenetic- (PHY-)",
         "pos_neg_inversion_count": "Pos/Neg Inversion Count",
-        "pos_to_virtual_margin": "Pos-to-Virtual Margin",
-        "virtual_to_real_margin": "Virtual-to-Real Margin",
+        "pos_to_virtual_margin": "Marg(Virt-,Pos)",
+        "virtual_to_real_margin": "Marg(Real-,Virt-)",
         "neg_virt_real_center_diff": "Neg Virt-to-Real Center Diff",
-        "real_neg_mean": "Real Negatives Mean",
-        "real_neg_median": "Real Negatives Median",
-        "virtual_neg_mean": "Virtual Negatives Mean",
-        "real_neg_spread": "Real Negatives Spread",
-        "soft_tiers_strict_chain": "Soft Tiers: Strict Chain",
-        "soft_tiers_2": "Soft Tiers: Relaxed 3-Tier",
-        "conditional_neg_top_anchor": "Conditional- Top Neg Anchor",
-        "strict_4tier": "Strict 4-Tier Hierarchy",
-        "neg_below_pos": "All Neg. < All Pos.",
-        "natural_polarity_split": "All Neg. < 0.50 < All Pos.",
-        "pos_to_virtual_margin_relevant": "Margin Between Virt. and Pos. >= 0.13",
-        "pos_far_from_middle": "Min(Pos.) >= 0.56",
-        "derived_neg_below_virtual_negs": "Derived Neg. <= Min(Virtual Neg.)",
-        "derived_neg_below_virtual_neg_mean": "Derived Neg. < Mean(Virtual Neg.)",
-        "derived_neg_le_conditional_neg": "Derived Neg. <= Conditional Neg.",
-        "conditional_neg_gt_real_neg_median": "Conditional Neg. > Median(Real Neg.)",
-        "virtual_neg_higher": "Real Neg. < Virtual Neg.",
-        "random_false_val_lt_conditional_not": "Random False Val. <= Conditional Neg.",
-        "phylo_pos_gt_curated_pos": "Curated Pos. < Phylogenetic Pos.",
-        "curated_neg_lt_phylo_neg": "Curated Neg. < Phylogenetic Neg.",
+        "real_neg_mean": "Avg(Real-)",
+        "real_neg_median": "Med(Real-)",
+        "virtual_neg_mean": "Avg(Virtual-)",
+        "real_neg_spread": "Spread(Real-)",
+        "soft_tiers_strict_chain": "DE- ≤ RF- < CD- & Neg < Pos",
+        "soft_tiers_2": "DE- ≤ CD- < 0.5 < Pos\n& (RF- ≤ CD- or Real- < Virt-)",
+        "conditional_neg_top_anchor": "Polarity Split with Dominant CD-",
+        "strict_4tier": "Real- < RF- < CD- < Pos",
+        "neg_below_pos": "Neg < Pos",
+        "natural_polarity_split": "Neg < 0.5 < Pos",
+        "pos_to_virtual_margin_relevant": "Marg(Virt-,Pos) ≥ 0.13",
+        "pos_far_from_middle": "Pos ≥ 0.56",
+        "derived_neg_below_virtual_negs": "DE- ≤ Virt-",
+        "derived_neg_below_virtual_neg_mean": "DE- ≤ Avg(Virt-)",
+        "derived_neg_le_conditional_neg": "DE- ≤ CD-",
+        "conditional_neg_gt_real_neg_median": "Med(Real-) < CD-",
+        "virtual_neg_higher": "Real- < Virt-",
+        "random_false_val_lt_conditional_not": "RF- < CD-",
+        "phylo_pos_gt_curated_pos": "CT+ < PHY+",
+        "curated_neg_lt_phylo_neg": "CT- < PHY-",
         "IS_MF": "Ontology = MF",
         "IS_CC": "Ontology = CC",
         "IS_BP": "Ontology = BP",
@@ -285,11 +275,7 @@ def draw_panel_a_scatter(
     seed=42,
     title="A. Classification Performance with Random Soft Label Values",
 ):
-    """
-    Render Panel A: Classification Performance with Random Soft Label Values.
-      - Legend ordered intuitively: py-, de-, cu-, rd-, co-, cu+, py+
-      - Elite (90%-100%) vertical text box shifted further left for clean separation from ticks
-    """
+    """Render Panel A: Classification Performance with Random Soft Label Values."""
     df_plot = build_long_scatter_df(df, palette=SOFT_LABEL_COLORS)
     df_shuffled = df_plot.sample(frac=1.0, random_state=seed).reset_index(drop=True)
     sizes = [300] * len(df_shuffled)
@@ -307,7 +293,6 @@ def draw_panel_a_scatter(
         zorder=3,
     )
 
-    # Show only the Elite range (90% to 100%) and vertical label on the left axis
     n_elite = int((df["Sort Score Norm"] >= 0.90).sum())
     elite_color = "#1f4e1b"
     ax.axhline(
@@ -320,7 +305,6 @@ def draw_panel_a_scatter(
     )
     ax.axhspan(90.0, 100.0, color="#6D863C", alpha=0.14, zorder=1)
 
-    # Vertical bracket and "Elite ({n} tests)" label placed with extra separation to the left of ticks
     trans_y = ax.get_yaxis_transform()
     ax.plot(
         [-0.082, -0.082],
@@ -372,9 +356,9 @@ def draw_panel_a_scatter(
         zorder=7,
     )
 
-    ax.set_xlabel("Soft Label Value", fontsize=10.5, fontweight="bold")
-    ax.set_ylabel("Normalized Overall Score (%)", fontsize=10.5, fontweight="bold", labelpad=20)
-    ax.set_title(title, fontsize=12.5, fontweight="bold", pad=10)
+    ax.set_xlabel("Soft Label Value", fontsize=12, fontweight="bold")
+    ax.set_ylabel("Normalized Overall Score (%)", fontsize=12, fontweight="bold", labelpad=20)
+    ax.set_title(title, fontsize=14, fontweight="bold", pad=10)
     ax.set_yticks([0, 20, 40, 60, 80, 90, 100])
     ax.set_xticks([0.0, 0.2, 0.4, 0.6, 0.8, 1.0])
     ax.tick_params(axis="both", labelsize=9.8)
@@ -382,7 +366,6 @@ def draw_panel_a_scatter(
     ax.set_xlim(-0.04, 1.04)
     ax.set_ylim(-2.5, 103.0)
 
-    # Order legend explicitly: py-, de-, cu-, rd-, co-, cu+, py+
     legend_handles = [
         plt.scatter(
             [],
@@ -402,7 +385,7 @@ def draw_panel_a_scatter(
         bbox_to_anchor=(0.98, 0.02),
         framealpha=0.92,
         facecolor="white",
-        fontsize=9.2,
+        fontsize=11,
     )
 
 
@@ -423,11 +406,7 @@ def plot_soft_label_scatter(df, evi_exp_res_dir):
 
 
 def draw_panel_b_evi_values_scale(ax, df):
-    """
-    Render Panel B: Soft Labeling Scheme With Best Performance (extra compact height)
-    Adapted from `plot_evi_values_scale` in `evidence_exploration-4-plot.py`,
-    using the exact `SOFT_LABEL_COLORS` from Panel A.
-    """
+    """Render Panel B: Soft Labeling Scheme With Best Performance (extra compact height)."""
     labels = [
         "phylo",
         "curated",
@@ -469,7 +448,16 @@ def draw_panel_b_evi_values_scale(ax, df):
     def format_evi(name):
         parts = name.split("_")
         if len(parts) == 2:
-            return f"{parts[0].capitalize()}\n({parts[1].capitalize()})"
+            tp, signal = parts
+            tp = (
+                tp.replace("phylo", "PHY")
+                .replace("curated", "CT")
+                .replace("derived", "DE")
+                .replace("random", "RF")
+                .replace("conditional", "CD")
+            )
+            signal = signal.replace("not", "-").replace("yes", "+")
+            return tp + signal
         return name
 
     color_map = {
@@ -484,11 +472,9 @@ def draw_panel_b_evi_values_scale(ax, df):
 
     avg_x = df_scale.groupby("evi_type")["label_value"].mean().sort_values()
 
-    # Compact horizontal gray ontology bars
     for y in [0, 1, 2]:
         ax.hlines(y, xmin=-0.05, xmax=1.05, color="#b0b0b0", linewidth=4.2, zorder=1)
 
-    # Anti-overlap logic for bottom text boxes
     label_xs = {}
     current_x = -0.02
     for evi, x_val in avg_x.items():
@@ -550,7 +536,7 @@ def draw_panel_b_evi_values_scale(ax, df):
             display_name,
             ha="center",
             va="center",
-            fontsize=7.9,
+            fontsize=10,
             color="black",
             bbox=dict(boxstyle="round,pad=0.18", fc="white", ec=edge_c, lw=1.1, alpha=1.0),
             zorder=4,
@@ -582,7 +568,7 @@ def draw_panel_b_evi_values_scale(ax, df):
     ax.set_ylim(-0.95, 2.72)
     ax.set_title(
         "B. Soft Labeling Scheme With Best Performance",
-        fontsize=12.5,
+        fontsize=14,
         fontweight="bold",
         y=1.00,
     )
@@ -687,10 +673,10 @@ def mine_composite_rules_from_nuclear(df, evi_exp_res_dir, min_support=0.07, min
     cand_atoms = ["A", "B", "C", "D", "E", "F", "G", "H", "(F ∨ H)"]
 
     known_composite_tags = {
-        "B ∧ D ∧ G ∧ H": "[R1] Conditional- Top Neg Anchor",
-        "B ∧ E ∧ (F ∨ H)": "[R2] Soft Tiers: Relaxed 3-Tier",
-        "A ∧ E ∧ H": "[R3] Soft Tiers: Strict Chain",
-        "A ∧ F ∧ H": "[R4] Strict 4-Tier Hierarchy",
+        "B ∧ D ∧ G ∧ H": "[R1] Polarity Split with Dominant CD-",
+        "B ∧ E ∧ (F ∨ H)": "[R2] DE- ≤ CD- < 0.5 < Pos & (RF- ≤ CD- or Real- < Virt-)",
+        "A ∧ E ∧ H": "[R3] DE- ≤ RF- < CD- & Neg < Pos",
+        "A ∧ F ∧ H": "[R4] Real- < RF- < CD- < Pos",
     }
 
     subsets = [("All_Runs", df.index)] + [
@@ -963,8 +949,100 @@ def export_publication_excel(df, float_stats_df, pattern_stats_df, mined_rules_d
 
 
 # =============================================================================
-# 8. UNIFIED 4-PANEL PUBLICATION FIGURE (PANELS A, B, C, D + FLOW ARROWS)
+# 8. UNIFIED 4-PANEL PUBLICATION FIGURE (PANELS A, B, C, D + NOTATION LEGEND)
 # =============================================================================
+def draw_notation_legend_box(ax_leg):
+    """
+    Draw a clean publication-grade notation & terminology legend outside Panel C on the right,
+    explaining Real-, Virt-, Neg, Pos, Med(·), Marg(·,·), and logical operators.
+    """
+    ax_leg.axis("off")
+    ax_leg.set_xlim(0.0, 1.0)
+    ax_leg.set_ylim(0.0, 1.0)
+
+    # Outer card matching matplotlib's legend aesthetic
+    card = mpatches.FancyBboxPatch(
+        (0.02, 0.04),
+        0.96,
+        0.92,
+        boxstyle="round,pad=0.02,rounding_size=0.03",
+        facecolor="#fafafa",
+        edgecolor="#bdbdbd",
+        linewidth=1.1,
+        zorder=1,
+    )
+    ax_leg.add_patch(card)
+
+    # Header bar
+    ax_leg.text(
+        0.50,
+        0.915,
+        "Notation & Group Legend",
+        ha="center",
+        va="top",
+        fontsize=11.0,
+        fontweight="bold",
+        color="#1a1a1a",
+        zorder=2,
+    )
+    ax_leg.plot([0.07, 0.93], [0.855, 0.855], color="#d0d0d0", linewidth=1.0, zorder=2)
+
+    entries = [
+        ("Soft Label Groups", None, True),
+        ("Pos", "{PHY+, CT+}  (Positives)", False),
+        ("Neg", "{PHY-, CT-, DE-, RF-, CD-}", False),
+        ("Real-", "{PHY-, CT-, DE-}  (Real neg.)", False),
+        ("Virt-", "{RF-, CD-}  (Virtual neg.)", False),
+        ("Functions & Metrics", None, True),
+        ("Med(X)", "Median value of set X", False),
+        ("Marg(X,Y)", "min(Y) - max(X)", False),
+        ("Logic & Thresholds", None, True),
+        ("∧  /  &", "Logical AND (both hold)", False),
+        ("∨  /  or", "Logical OR (either holds)", False),
+        ("0.5", "Natural polarity midpoint", False),
+    ]
+
+    y_cur = 0.81
+    for key, desc, is_header in entries:
+        if is_header:
+            y_cur -= 0.020
+            ax_leg.text(
+                0.07,
+                y_cur,
+                key,
+                ha="left",
+                va="center",
+                fontsize=9.5,
+                fontweight="bold",
+                color="#250C6F",
+                zorder=2,
+            )
+            y_cur -= 0.052
+        else:
+            ax_leg.text(
+                0.065,
+                y_cur,
+                f"{key}:",
+                ha="left",
+                va="center",
+                fontsize=8.8,
+                fontweight="bold",
+                color="#222222",
+                zorder=2,
+            )
+            ax_leg.text(
+                0.355,
+                y_cur,
+                desc,
+                ha="left",
+                va="center",
+                fontsize=8.4,
+                color="#333333",
+                zorder=2,
+            )
+            y_cur -= 0.064
+
+
 def plot_relationships(
     df,
     float_stats_df,
@@ -972,58 +1050,46 @@ def plot_relationships(
     bool_pattern_cols,
     evi_exp_res_dir,
 ):
-    """
-    Create the unified 4-panel figure (`soft_optimization_relationships.png`):
-      - Panel A (top-left): Classification Performance with Random Soft Label Values,
-        with legend ordered [py-, de-, cu-, rd-, co-, cu+, py+] and vertical 'Elite ({n} tests)'
-        separated cleanly on the left axis.
-      - Panel B (extra compact bottom-left): Soft Labeling Scheme With Best Performance.
-      - Panel C (top-right): Diverging horizontal bars centered at 0.0 (negative correlations
-        extending left, positive correlations extending right), annotated with 'R=X, P-value=Y'.
-      - Panel D (bottom-right): Blue ('True') and Orange ('False') boxplots with thicker lines
-        and circles across MF, BP, CC, with atomic rules [H]..[A] and apriori rules [R4]..[R1]
-        sorted strictly by BH-adjusted p-value descending (largest p-value at the top).
-    """
-    fig = plt.figure(figsize=(24.0, 15.2), facecolor="white")
+    """Create the unified 4-panel figure (`soft_optimization_relationships.png`)."""
+    fig = plt.figure(figsize=(25.5, 15.2), facecolor="white")
 
-    # Preserve user's parallel wspace=0.48
     outer_gs = gridspec.GridSpec(
-        1, 2, figure=fig, width_ratios=[0.92, 1.52], wspace=0.48
+        1, 2, figure=fig, width_ratios=[0.88, 1.62], wspace=0.35
     )
 
-    # Left column: A even taller on top, B extra compact on bottom
     gs_left = gridspec.GridSpecFromSubplotSpec(
         2, 1, subplot_spec=outer_gs[0], height_ratios=[2.50, 0.52], hspace=0.22
     )
     ax_a = fig.add_subplot(gs_left[0, 0])
     ax_b = fig.add_subplot(gs_left[1, 0])
 
-    # Right column: C on top, D on bottom (preserve user's hspace=0.32)
     gs_right = gridspec.GridSpecFromSubplotSpec(
         2, 1, subplot_spec=outer_gs[1], height_ratios=[0.95, 1.25], hspace=0.32
     )
-    ax_c = fig.add_subplot(gs_right[0, 0])
+    # Split top-right row into Panel C (left) and the new Notation Legend (outside C, on the right)
+    gs_c_row = gridspec.GridSpecFromSubplotSpec(
+        1, 2, subplot_spec=gs_right[0, 0], width_ratios=[1.0, 0.25], wspace=0.025
+    )
+    ax_c = fig.add_subplot(gs_c_row[0, 0])
+    ax_c_leg = fig.add_subplot(gs_c_row[0, 1])
+
     gs_d = gridspec.GridSpecFromSubplotSpec(
         1, 3, subplot_spec=gs_right[1, 0], wspace=0.04
     )
     ax_d_list = [fig.add_subplot(gs_d[0, i]) for i in range(3)]
 
     # -------------------------------------------------------------------------
-    # PANEL A: Classification Performance with Random Soft Label Values
+    # PANEL A & PANEL B
     # -------------------------------------------------------------------------
     draw_panel_a_scatter(
         ax_a,
         df,
         title="A. Classification Performance with Random Soft Label Values",
     )
-
-    # -------------------------------------------------------------------------
-    # PANEL B: Soft Labeling Scheme With Best Performance (Extra Compact)
-    # -------------------------------------------------------------------------
     draw_panel_b_evi_values_scale(ax_b, df)
 
     # -------------------------------------------------------------------------
-    # PANEL C: Diverging Continuous Soft Labels & Margins Impact (Left=Neg, Right=Pos)
+    # PANEL C: Diverging Continuous Soft Labels & Margins Impact + Right Notation Legend
     # -------------------------------------------------------------------------
     all_runs_flt = float_stats_df[float_stats_df["Subset"] == "All_Runs"].copy()
     all_runs_flt["_abs_r"] = all_runs_flt["Spearman_r"].abs()
@@ -1042,7 +1108,6 @@ def plot_relationships(
         "CC": "#c44500",
     }
 
-    # Central zero vertical axis separating negative (left) from positive (right) correlations
     ax_c.axvline(0.0, color="#222222", linestyle="-", linewidth=1.3, zorder=3)
 
     for ont in ONTOLOGIES:
@@ -1074,7 +1139,7 @@ def plot_relationships(
                 f"R={r_val:+.2f}, P-value={p_num}",
                 va="center",
                 ha=ha_align,
-                fontsize=8.3,
+                fontsize=8.2,
                 color=text_colors_c[ont],
                 fontweight="bold",
             )
@@ -1083,28 +1148,28 @@ def plot_relationships(
         ax_c.axhline(idx + 0.5, color="#e0e0e0", linestyle="-", linewidth=0.8)
 
     ax_c.set_yticks(y_pos)
-    ax_c.set_yticklabels([parse_label_name(col) for col in all_float_order], fontsize=10.5, fontweight="bold")
+    ax_c.set_yticklabels([parse_label_name(col) for col in all_float_order], fontsize=11, fontweight="bold")
     ax_c.tick_params(axis="x", labelsize=10.0)
-    ax_c.set_xlim(-1.26, 1.12)
+    ax_c.set_xlim(-1.28, 1.15)
     ax_c.set_xlabel(
-        "Spearman Rank Correlation R (Negative Left, Positive Right; BH-Adjusted P-value)",
-        fontsize=10.8,
+        "Spearman Rank Correlation (Negative Left, Positive Right)",
+        fontsize=12,
         fontweight="bold",
     )
     ax_c.set_title(
         "C. Correlation Between Soft Label Characteristics and Classification Performance",
-        fontsize=12.5,
+        fontsize=14,
         fontweight="bold",
         pad=10,
     )
-    ax_c.legend(title="Ontology", loc="lower right", framealpha=0.95, fontsize=9.5, title_fontsize=10.0)
+    ax_c.legend(title="Ontology", loc="lower right", framealpha=0.95, fontsize=10.5, title_fontsize=11.5)
     ax_c.grid(True, axis="x", linestyle="--", alpha=0.4)
+
+    # Render the additional notation/terminology legend outside C on the right
+    draw_notation_legend_box(ax_c_leg)
 
     # -------------------------------------------------------------------------
     # PANEL D: Patterns Associated With 'Elite' Performance (>= 90%)
-    #          - Blue for True (#2D5CCB), Orange for False (#ff5d00)
-    #          - Thicker boxplot lines and outlier circles
-    #          - Atomic rules [H]..[A] and Apriori rules [R4]..[R1] sorted by p-value descending
     # -------------------------------------------------------------------------
     pat_p_lookup = pattern_stats_df.set_index(["Subset", "Pattern"])
 
@@ -1120,7 +1185,6 @@ def plot_relationships(
         if c in bool_pattern_cols
     ]
 
-    # Sort both groups by overall BH-adjusted p-value descending (larger p-value at the top)
     nuclear_cols = sorted(
         nuclear_cols_raw,
         key=lambda c: float(pat_p_lookup.loc[("All_Runs", c), "MannWhitney_p_adj_BH"]),
@@ -1173,7 +1237,6 @@ def plot_relationships(
             ),
         )
 
-        # Dashed divider separating atomic rules (top) from composite rules (bottom)
         if len(nuclear_cols) > 0:
             ax_d.axhline(
                 len(nuclear_cols) - 0.5,
@@ -1191,7 +1254,7 @@ def plot_relationships(
         s_min, s_max = float(ont_scores.min()), float(ont_scores.max())
         pad = (s_max - s_min) * 0.05
         ax_d.set_xlim(s_min - pad, s_max + pad)
-        ax_d.set_title(ONTOLOGY_TITLES[ont], fontsize=11.0, fontweight="bold", pad=6)
+        ax_d.set_title(ONTOLOGY_TITLES[ont], fontsize=13, fontweight="bold", pad=2)
         ax_d.tick_params(axis="x", labelsize=10.0)
         ax_d.grid(True, axis="x", linestyle="--", alpha=0.45)
 
@@ -1219,11 +1282,10 @@ def plot_relationships(
                 ax_d.get_legend().remove()
 
         if idx_ont == 1:
-            ax_d.set_xlabel("Overall Score (%)", fontsize=10.8, fontweight="bold", labelpad=6)
+            ax_d.set_xlabel("Overall Score (%)", fontsize=12, fontweight="bold", labelpad=6)
         else:
             ax_d.set_xlabel("")
 
-        # On the rightmost subplot (CC), display only the overall BH-adjusted p-value ("P-Value=X")
         if idx_ont == len(ONTOLOGIES) - 1:
             for r_i, pat_col in enumerate(plot_bool_cols):
                 p_all = pat_p_lookup.loc[("All_Runs", pat_col), "MannWhitney_p_adj_BH"]
@@ -1243,16 +1305,24 @@ def plot_relationships(
 
     ax_d_list[1].text(
         0.5,
-        1.09,
+        1.04,
         "D. Patterns Associated With 'Elite' Performance (>= 90%)",
         transform=ax_d_list[1].transAxes,
         ha="center",
         va="bottom",
-        fontsize=12.5,
+        fontsize=14,
         fontweight="bold",
     )
 
-    fig.subplots_adjust(left=0.062, right=0.925, top=0.945, bottom=0.05)
+    fig.subplots_adjust(left=0.058, right=0.935, top=0.945, bottom=0.05)
+    # Shift Notation Legend closer to the figure right edge (aligning with Panel D P-values)
+    # and give Panel C the reclaimed horizontal space
+    pos_c0 = ax_c.get_position()
+    pos_l0 = ax_c_leg.get_position()
+    new_leg_x0 = pos_l0.x0 + 0.044
+    new_leg_w = 0.992 - new_leg_x0
+    ax_c_leg.set_position([new_leg_x0, pos_l0.y0, new_leg_w, pos_l0.height])
+    ax_c.set_position([pos_c0.x0, pos_c0.y0, (new_leg_x0 - 0.015) - pos_c0.x0, pos_c0.height])
     fig.canvas.draw()
 
     # -------------------------------------------------------------------------
@@ -1266,7 +1336,6 @@ def plot_relationships(
     arrow_style = "Simple,tail_width=3.2,head_width=12,head_length=11"
     arrow_color = "#2c3e50"
 
-    # 1. Arrow from bottom of A to top of B
     x_ab = pos_a.x0 + 0.50 * pos_a.width
     y_a_bot = pos_a.y0 - 0.036
     y_b_top = pos_b.y1 + 0.022
@@ -1281,9 +1350,8 @@ def plot_relationships(
     )
     fig.add_artist(arr_ab)
 
-    # 2. Arrow from right of A to left of C
     x_a_right = pos_a.x1 + 0.012
-    x_c_left = pos_c.x0 - 0.095
+    x_c_left = pos_c.x0 - 0.075
     y_ac = pos_c.y0 + 0.50 * pos_c.height
     arr_ac = FancyArrowPatch(
         (x_a_right, y_ac),
@@ -1296,10 +1364,9 @@ def plot_relationships(
     )
     fig.add_artist(arr_ac)
 
-    # 3. Arrow from bottom of C to top of D
     x_cd = pos_d_mid.x0 + 0.50 * pos_d_mid.width
     y_c_bot = pos_c.y0 - 0.036
-    y_d_top = pos_d_mid.y1 + 0.052
+    y_d_top = pos_d_mid.y1 + 0.036
     arr_cd = FancyArrowPatch(
         (x_cd, y_c_bot),
         (x_cd, y_d_top),
